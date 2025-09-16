@@ -5,6 +5,7 @@ export default [
       'width': 'data(rank)' as any,
       'height': 'data(rank)' as any,
       'background-image': 'data(img)',
+      'background-fit': 'contain',
       'font-size': '18px',
       'font-weight': 'bold' as any,
       'content': `data(name)`,

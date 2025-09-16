@@ -71,13 +71,90 @@ async function fetchAllProfiles(
 }
 
 import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
-import { getPds } from '$lib/getPds';
+import { getPds } from '$lib/server/getPds';
+import { Buffer } from 'buffer';
 
 export const load: ServerLoad = async () => {
-  console.log('Fetching data from Bluesky...');
+  try {
+    console.log('Fetching data from Bluesky...');
 
-  if (!BSKY_DID || !BSKY_PASSWORD) {
-    console.error('Bluesky DID or password not set in environment variables.');
+    if (!BSKY_DID || !BSKY_PASSWORD) {
+      console.error('Bluesky DID or password not set in environment variables.');
+      return {
+        graphData: {
+          nodes: [],
+          edges: [],
+        },
+      };
+    }
+
+    await agent.login({
+      identifier: BSKY_DID,
+      password: BSKY_PASSWORD,
+    });
+
+    const soAsanoHandle = 'so-asano.com';
+    const soAsanoProfile = await agent.resolveHandle({handle: soAsanoHandle});
+    const soAsanoDid = soAsanoProfile.data.did;
+
+    const introRecords = await fetchAllRecords(
+      soAsanoDid, // DIDを使用
+      'com.skybemoreblue.intro.introduction'
+    );
+
+    const initialDids = new Set<string>();
+    introRecords.forEach((record: any) => {
+      if (record.value?.subject) {
+        initialDids.add(record.value.subject);
+      }
+    });
+    initialDids.add(soAsanoDid);
+
+    const profiles = await fetchAllProfiles(Array.from(initialDids));
+
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    const didToProfileMap = new Map<string, any>();
+
+    for (const profile of profiles) {
+      didToProfileMap.set(profile.did, profile);
+      const rank = getRank({
+        followersCount: profile.followersCount || 0,
+        followsCount: profile.followsCount || 1,
+      });
+
+      nodes.push({
+        data: {
+          id: profile.did,
+          img: profile.avatar ? await imageToBase64(profile.avatar) : null,
+          name: profile.displayName || profile.handle,
+          rank: rank,
+          handle: profile.handle,
+        },
+        group: 'nodes',
+      });
+    }
+
+    introRecords.forEach((record: any) => {
+      if (record.value?.subject && didToProfileMap.has(soAsanoDid) && didToProfileMap.has(record.value.subject)) {
+        edges.push({
+          data: {
+            source: soAsanoDid,
+            target: record.value.subject,
+          },
+          group: 'edges',
+        });
+      }
+    });
+
+    return {
+      graphData: {
+        nodes,
+        edges,
+      },
+    };
+  } catch (error) {
+    console.error('Error in load function:', error);
     return {
       graphData: {
         nodes: [],
@@ -85,142 +162,4 @@ export const load: ServerLoad = async () => {
       },
     };
   }
-
-  await agent.login({
-    identifier: BSKY_DID,
-    password: BSKY_PASSWORD,
-  });
-
-  const soAsanoHandle = 'so-asano.com';
-  const soAsanoProfile = await agent.resolveHandle({handle: soAsanoHandle});
-  const soAsanoDid = soAsanoProfile.data.did;
-
-  const introRecords = await fetchAllRecords(
-    soAsanoDid, // DIDを使用
-    'com.skybemoreblue.intro.introduction'
-  );
-
-  const initialDids = new Set<string>();
-  introRecords.forEach((record: any) => {
-    console.log(record);
-    if (record.value?.subject) { // subjectを使用
-      initialDids.add(record.value.subject);
-    }
-  });
-  initialDids.add(soAsanoDid); // so-asano.comのDIDをノードとして追加
-
-  const visitedDids = new Set<string>();
-  const didsToVisit = new Set<string>(initialDids);
-  const allCollectedDids = new Set<string>();
-
-  while (didsToVisit.size > 0) {
-    const currentDid = didsToVisit.values().next().value as string; // 型アサーションを追加
-    didsToVisit.delete(currentDid);
-    if (visitedDids.has(currentDid)) {
-      continue;
-    }
-    visitedDids.add(currentDid);
-    allCollectedDids.add(currentDid);
-
-    // ここでcurrentDidのレコードを収集し、そこから新しいDIDを抽出する
-    // 例: currentDidがフォローしているユーザーのDIDを収集するなど
-    // 今回は `com.skybemoreblue.intro.introduction` レコードの `did` フィールドを芋づる式に辿る
-    const relatedRecords = await fetchAllRecords(
-      currentDid,
-      'com.skybemoreblue.intro.introduction'
-    );
-    relatedRecords.forEach((record: any) => {
-      console.log(record);
-      if (record.value?.subject && !visitedDids.has(record.value.subject)) { // subjectを使用
-        didsToVisit.add(record.value.subject);
-      }
-    });
-  }
-
-  const profiles = await fetchAllProfiles(Array.from(allCollectedDids));
-
-  const nodes: any[] = [];
-  const edges: any[] = [];
-  const didToProfileMap = new Map<string, any>();
-
-  for (const profile of profiles) {
-    didToProfileMap.set(profile.did, profile);
-    const rank = getRank({
-      followersCount: profile.followersCount || 0,
-      followsCount: profile.followsCount || 1, // 0除算を避ける
-    });
-
-    nodes.push({
-      data: {
-        id: profile.did,
-        img: profile.avatar ? await imageToBase64(profile.avatar) : null,
-        name: profile.displayName || profile.handle,
-        rank: rank,
-        handle: profile.handle,
-      },
-      group: 'nodes',
-    });
-  }
-
-  // エッジの生成
-  // introRecordsはso-asano.comが発行したレコードなので、sourceはso-asano.comのDID
-  introRecords.forEach((record: any) => {
-    if (record.value?.subject && didToProfileMap.has(soAsanoDid) && didToProfileMap.has(record.value.subject)) {
-      edges.push({
-        data: {
-          source: soAsanoDid, // so-asano.comのDIDを使用
-          target: record.value.subject, // subjectを使用
-        },
-        group: 'edges',
-      });
-    }
-  });
-
-  // 芋づる式に収集したレコードからもエッジを生成
-  for (const did of visitedDids) {
-    const relatedRecords = await fetchAllRecords(
-      did,
-      'com.skybemoreblue.intro.introduction'
-    );
-    relatedRecords.forEach((record: any) => {
-      // record.repoはレコードを発行したDID
-      if (record.value?.subject && didToProfileMap.has(record.repo) && didToProfileMap.has(record.value.subject)) {
-        edges.push({
-          data: {
-            source: record.repo,
-            target: record.value.subject, // subjectを使用
-          },
-          group: 'edges',
-        });
-      }
-    });
-  }
-
-  return {
-    graphData: {
-      nodes,
-      edges,
-    },
-  };
 };
-
-async function imageToBase64(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error(`Failed to fetch image: ${response.statusText}`);
-      return null;
-    }
-    const blob = await response.blob();
-    const base64data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-    return base64data;
-  } catch (error) {
-    console.error('Error converting image to base64:', error);
-    return null;
-  }
-}
