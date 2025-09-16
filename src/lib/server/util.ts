@@ -1,4 +1,4 @@
-async function imageToBase64(url: string): Promise<string | null> {
+export async function imageToBase64(url: string): Promise<string | null> {
   try {
     const response = await fetch(url);
     if (!response.ok) {

@@ -2,7 +2,7 @@ import { AtpAgent } from '@atproto/api';
 import { json } from '@sveltejs/kit';
 import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
 import { getPds } from '$lib/server/getPds';
-import { Buffer } from 'buffer';
+import { imageToBase64 } from '$lib/server/util';
 
 const agent = new AtpAgent({
   service: 'https://bsky.social',
@@ -61,10 +61,15 @@ async function fetchAllProfiles(
   const chunkSize = 25;
   for (let i = 0; i < dids.length; i += chunkSize) {
     const chunk = dids.slice(i, i + chunkSize);
-    const response = await agent.getProfiles({
-      actors: chunk,
-    });
-    allProfiles.push(...response.data.profiles);
+    try {
+      const response = await agent.getProfiles({
+        actors: chunk,
+      });
+      allProfiles.push(...response.data.profiles);
+      console.log(`Fetched profiles for chunk (size ${chunk.length}):`, response.data.profiles.map((p: any) => p.did));
+    } catch (error) {
+      console.error(`Error fetching profiles for chunk ${chunk}:`, error);
+    }
   }
 
   return allProfiles;
@@ -92,6 +97,10 @@ export async function POST({ request }) {
     didToExpand,
     'com.skybemoreblue.intro.introduction'
   );
+  console.log('Fetched relatedRecords count:', relatedRecords.length);
+  if (relatedRecords.length > 0) {
+    console.log('Example relatedRecord:', relatedRecords[0]);
+  }
 
   const newDids = new Set<string>();
   relatedRecords.forEach((record: any) => {
@@ -100,8 +109,11 @@ export async function POST({ request }) {
     }
   });
   newDids.add(didToExpand);
+  console.log('New DIDs to fetch profiles for:', Array.from(newDids));
 
   const profiles = await fetchAllProfiles(Array.from(newDids));
+  console.log('Total profiles fetched:', profiles.length);
+  console.log('Profiles DIDs:', profiles.map((p: any) => p.did));
 
   const newNodes: any[] = [];
   const newEdges: any[] = [];
@@ -126,17 +138,29 @@ export async function POST({ request }) {
     });
   }
 
+  console.log('didToProfileMap keys:', Array.from(didToProfileMap.keys())); // デバッグログ追加
   relatedRecords.forEach((record: any) => {
-    if (record.value?.subject && didToProfileMap.has(record.repo) && didToProfileMap.has(record.value.subject)) {
+    const sourceDid = record.uri.split('/')[2]; // record.repo から record.uri をパースするように変更
+    const targetDid = record.value?.subject;
+    console.log(`Processing record: sourceDid=${sourceDid}, targetDid=${targetDid}`); // デバッグログ追加
+
+    if (targetDid && didToProfileMap.has(sourceDid) && didToProfileMap.has(targetDid)) {
       newEdges.push({
         data: {
-          source: record.repo,
-          target: record.value.subject,
+          source: sourceDid,
+          target: targetDid,
         },
         group: 'edges',
       });
+      console.log(`Adding edge: ${sourceDid} -> ${targetDid}`);
+    } else {
+      console.log(`Skipping edge for record:`, record);
+      console.log(`  targetDid exists: ${!!targetDid}`);
+      console.log(`  sourceDid in map: ${didToProfileMap.has(sourceDid)}`);
+      console.log(`  targetDid in map: ${didToProfileMap.has(targetDid)}`);
     }
   });
+  console.log('Final newEdges count:', newEdges.length);
 
   return json({
     graphData: {

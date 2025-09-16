@@ -1,5 +1,6 @@
 import { AtpAgent } from '@atproto/api';
 import type { ServerLoad } from '@sveltejs/kit';
+import { imageToBase64 } from '$lib/server/util';
 
 const agent = new AtpAgent({
   service: 'https://bsky.social',
