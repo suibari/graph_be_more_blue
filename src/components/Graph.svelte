@@ -5,7 +5,7 @@
   import GraphLayout from './GraphLayout';
   import { onMount } from "svelte";
 
-  export let elements: any[];
+  export let graphData: { nodes: any[]; edges: any[] };
 
   let container: HTMLDivElement;
   let cyInstance: cytoscape.Core | null = null;
@@ -15,7 +15,7 @@
 
     cyInstance = cytoscape({
       container: container,
-      elements: elements,
+      elements: [...graphData.nodes, ...graphData.edges],
       style: GraphStyles,
       wheelSensitivity: 0.1,
     });
@@ -31,11 +31,19 @@
     });
   })
 
-  $: if (cyInstance && elements) {
-    cyInstance.json({ elements: elements });
+  $: if (cyInstance && graphData) {
+    cyInstance.json({ elements: [...graphData.nodes, ...graphData.edges] });
     cyInstance.layout(GraphLayout).run();
   }
 </script>
+
+<style>
+  .graph {
+    width: 100%;
+    height: 80vh; /* 画面の高さの80%を使用 */
+    border: 1px solid #ccc;
+  }
+</style>
 
 <div class="graph" bind:this={container}>
   {#if cyInstance}
