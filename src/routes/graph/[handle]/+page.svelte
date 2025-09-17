@@ -145,16 +145,15 @@
 </style>
 
 <div class="container mx-auto p-4">
-  <h1 class="text-3xl font-bold mb-4">GraphBeMoreBlue!</h1>
-    <Graph
-      {graphData}
-      initialSelectedNodeDid={initialCenterDid}
-      {isLoading}
-      on:nodeTap={handleNodeTap}
-      on:nodeMouseover={handleNodeMouseover}
-      on:nodeMouseout={handleNodeMouseout}
-    />
-    <div class="tooltip" style={tooltipStyle}>
-      {@html displayIntroduction}
-    </div>
+  <Graph
+    {graphData}
+    initialSelectedNodeDid={initialCenterDid}
+    {isLoading}
+    on:nodeTap={handleNodeTap}
+    on:nodeMouseover={handleNodeMouseover}
+    on:nodeMouseout={handleNodeMouseout}
+  />
+  <div class="tooltip" style={tooltipStyle}>
+    {@html displayIntroduction}
+  </div>
 </div>

@@ -1,2 +1,23 @@
-@import 'tailwindcss';
-@plugin '@tailwindcss/typography';
+/* Global styles */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background: linear-gradient(90deg, rgba(144, 245, 154, 1), rgba(4, 202, 255, 1)); /* User specified colors */
+  background-size: 400% 400%; /* Adjusted size for flowing effect */
+  animation: aurora 10s ease infinite; /* Adjusted duration for flowing effect */
+}
+
+@keyframes aurora {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Other styles from the original app.css if any */
+/* For now, assuming this is a new file or we are replacing existing styles */
