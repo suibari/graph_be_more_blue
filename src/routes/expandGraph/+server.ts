@@ -144,6 +144,7 @@ export async function POST({ request }) {
         rank: rank,
         handle: profile.handle,
         introductions: introduction ? [introduction] : [],
+        tags: introduction ? introduction.tags : [],
       },
       group: 'nodes',
     });

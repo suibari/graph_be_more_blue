@@ -21,6 +21,7 @@ export type GraphNode = {
     rank: number;
     handle: string;
     introductions: Introduction[]; // 配列に変更
+    tags?: string[];
   };
   group: 'nodes';
 };
@@ -184,6 +185,7 @@ export const load: ServerLoad = async (): Promise<PageServerLoadOutput> => {
           rank: rank,
           handle: profile.handle,
           introductions: introduction ? [introduction] : [], // 配列として初期化
+          tags: introduction ? introduction.tags : [],
         },
         group: 'nodes',
       });
