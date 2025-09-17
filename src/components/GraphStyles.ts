@@ -31,6 +31,12 @@ export default [
     }
   },
   {
+    selector: 'node.tapped',
+    style: {
+      'opacity': 0.5
+    }
+  },
+  {
     selector: 'node.todirect',
     style: {
       'background-color': 'lightblue',

@@ -14,6 +14,7 @@
   let container: HTMLDivElement;
   let cyInstance: cytoscape.Core | null = null;
   const dispatch = createEventDispatcher();
+  let tappedNodeDids = new Set<string>();
 
   // ツールチップの状態管理 (Graph.svelteでは直接管理しないため削除)
   // let tooltipContent: string = '';
@@ -41,11 +42,13 @@
       }
     });
 
-    // 初期中心ノードを選択状態にする
+    // 初期中心ノードを選択状態にし、タップ済みセットに追加
     if (initialSelectedNodeDid) {
+      tappedNodeDids.add(initialSelectedNodeDid);
       const centerNode = cyInstance.nodes(`[id = "${initialSelectedNodeDid}"]`);
       if (centerNode.length > 0) {
         centerNode.select();
+        centerNode.addClass('tapped');
       }
     }
 
@@ -65,9 +68,18 @@
     cyInstance.on('tap', 'node', (evt) => {
       if (!cyInstance) return;
       const node = evt.target;
+      const nodeId = node.id();
+
       cyInstance.nodes().unselect();
       node.select();
-      dispatch('nodeTap', { did: node.id() });
+
+      const isTapped = tappedNodeDids.has(nodeId);
+      if (!isTapped) {
+        tappedNodeDids.add(nodeId);
+        node.addClass('tapped');
+      }
+
+      dispatch('nodeTap', { did: nodeId, isTapped });
     });
 
     // マウスオーバーイベント

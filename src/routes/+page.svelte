@@ -22,31 +22,36 @@
     displayIntroduction = '';
     tooltipStyle = 'display: none;';
 
-    if (graphData && hoveredNodeDid) {
-      const hoveredNode = graphData.nodes.find(node => node.data.id === hoveredNodeDid);
-      if (hoveredNode && hoveredNode.data.introductions) {
+    let targetNodeDid = hoveredNodeDid || selectedNodeDid;
+
+    if (graphData && targetNodeDid) {
+      const targetNode = graphData.nodes.find(node => node.data.id === targetNodeDid);
+      if (targetNode && targetNode.data.introductions) {
         const authorDidToCheck = selectedNodeDid || initialCenterDid;
-        const intro = hoveredNode.data.introductions.find(intro => intro.author === authorDidToCheck);
+        const intro = targetNode.data.introductions.find(intro => intro.author === authorDidToCheck);
 
         if (intro && intro.body) {
           // アカウントのnameを太字で表示
-          const nodeName = hoveredNode.data.name || hoveredNode.data.handle;
+          const nodeName = targetNode.data.name || targetNode.data.handle;
           displayIntroduction = `<strong>${nodeName}</strong>\n${intro.body}`;
-          if (hoveredNodePosition) {
+          if (hoveredNodePosition && hoveredNodeDid) { // マウスオーバー時のみツールチップ位置を更新
             tooltipStyle = `
               display: block;
               left: ${hoveredNodePosition.x + 15}px;
               top: ${hoveredNodePosition.y + 15}px;
             `;
+          } else if (selectedNodeDid && !hoveredNodeDid) {
+            // ノードタップ時でマウスオーバーがない場合、ツールチップは非表示のまま、紹介文のみ更新
+            tooltipStyle = 'display: none;';
           }
         }
       }
     }
   }
 
-  async function handleNodeTap(event: CustomEvent<{ did: string }>) {
-    const did = event.detail.did;
-    console.log('Node tapped:', did);
+  async function handleNodeTap(event: CustomEvent<{ did: string; isTapped: boolean }>) {
+    const { did, isTapped } = event.detail;
+    console.log('Node tapped:', did, 'Is already tapped:', isTapped);
 
     selectedNodeDid = did; // タップされたノードを更新
     hoveredNodeDid = null; // タップしたらマウスオーバー状態をリセット
@@ -54,6 +59,13 @@
 
     if (!graphData || !graphData.nodes || !graphData.edges) {
       console.error('graphData is not properly initialized.');
+      return;
+    }
+
+    if (isTapped) {
+      // 既にタップ済みのノードの場合、サーバーフェッチは行わない
+      console.log('Already tapped node. Skipping server fetch.');
+      // 紹介文の表示は$: displayIntroductionブロックで自動的に更新される
       return;
     }
 
