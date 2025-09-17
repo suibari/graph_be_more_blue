@@ -115,6 +115,14 @@ export async function POST({ request }) {
   console.log('Total profiles fetched:', profiles.length);
   console.log('Profiles DIDs:', profiles.map((p: any) => p.did));
 
+  const introRecordsMap = new Map<string, any>();
+  relatedRecords.forEach((record: any) => {
+    if (record.value?.subject) {
+      const authorDid = record.uri.split('/')[2];
+      introRecordsMap.set(record.value.subject, { ...record.value, author: authorDid });
+    }
+  });
+
   const newNodes: any[] = [];
   const newEdges: any[] = [];
   const didToProfileMap = new Map<string, any>();
@@ -126,6 +134,8 @@ export async function POST({ request }) {
       followsCount: profile.followsCount || 1,
     });
 
+    const introduction = introRecordsMap.get(profile.did);
+
     newNodes.push({
       data: {
         id: profile.did,
@@ -133,6 +143,7 @@ export async function POST({ request }) {
         name: profile.displayName || profile.handle,
         rank: rank,
         handle: profile.handle,
+        introductions: introduction ? [introduction] : [],
       },
       group: 'nodes',
     });

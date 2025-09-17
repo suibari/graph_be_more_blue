@@ -2,6 +2,17 @@ import { AtpAgent } from '@atproto/api';
 import type { ServerLoad } from '@sveltejs/kit';
 import { imageToBase64 } from '$lib/server/util';
 
+export type Introduction = {
+  body: string;
+  lang: string;
+  tags: string[];
+  $type: string;
+  subject: string;
+  createdAt: string;
+  updatedAt: string;
+  author: string;
+};
+
 export type GraphNode = {
   data: {
     id: string;
@@ -9,15 +20,7 @@ export type GraphNode = {
     name: string;
     rank: number;
     handle: string;
-    introduction: {
-      body: string;
-      lang: string;
-      tags: string[];
-      $type: string;
-      subject: string;
-      createdAt: string;
-      updatedAt: string;
-    } | null;
+    introductions: Introduction[]; // 配列に変更
   };
   group: 'nodes';
 };
@@ -145,7 +148,8 @@ export const load: ServerLoad = async (): Promise<PageServerLoadOutput> => {
     const introRecordsMap = new Map<string, any>();
     introRecords.forEach((record: any) => {
       if (record.value?.subject) {
-        introRecordsMap.set(record.value.subject, record.value);
+        const authorDid = record.uri.split('/')[2];
+        introRecordsMap.set(record.value.subject, { ...record.value, author: authorDid });
       }
     });
 
@@ -170,7 +174,7 @@ export const load: ServerLoad = async (): Promise<PageServerLoadOutput> => {
         followsCount: profile.followsCount || 1,
       });
 
-      const introduction = introRecordsMap.get(profile.did); // ここで紹介文を取得
+      const introduction = introRecordsMap.get(profile.did);
 
       nodes.push({
         data: {
@@ -179,7 +183,7 @@ export const load: ServerLoad = async (): Promise<PageServerLoadOutput> => {
           name: profile.displayName || profile.handle,
           rank: rank,
           handle: profile.handle,
-          introduction: introduction || null, // 紹介文を追加
+          introductions: introduction ? [introduction] : [], // 配列として初期化
         },
         group: 'nodes',
       });

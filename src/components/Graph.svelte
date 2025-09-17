@@ -46,22 +46,12 @@
     // マウスオーバーイベント
     cyInstance.on('mouseover', 'node', (evt) => {
       const node = evt.target;
-      const nodeData = node.data();
-      if (nodeData.introduction && nodeData.introduction.body) {
-        tooltipContent = nodeData.introduction.body;
-        const renderedPosition = node.renderedPosition();
-        tooltipStyle = `
-          display: block;
-          left: ${renderedPosition.x + 15}px;
-          top: ${renderedPosition.y + 15}px;
-        `;
-      }
+      dispatch('nodeMouseover', { did: node.id(), renderedPosition: node.renderedPosition() });
     });
 
     // マウスアウトイベント
     cyInstance.on('mouseout', 'node', () => {
-      tooltipContent = '';
-      tooltipStyle = 'display: none;';
+      dispatch('nodeMouseout');
     });
   })
 
@@ -108,7 +98,4 @@
   {#if cyInstance}
     <slot/>
   {/if}
-  <div class="tooltip" style={tooltipStyle}>
-    {tooltipContent}
-  </div>
 </div>
