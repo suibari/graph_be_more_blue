@@ -11,6 +11,10 @@
   let cyInstance: cytoscape.Core | null = null;
   const dispatch = createEventDispatcher();
 
+  // ツールチップの状態管理
+  let tooltipContent: string = '';
+  let tooltipStyle: string = 'display: none;';
+
   onMount(() => {
     cytoscape.use( fcose );
 
@@ -38,6 +42,27 @@
       const node = evt.target;
       dispatch('nodeTap', { did: node.id() });
     });
+
+    // マウスオーバーイベント
+    cyInstance.on('mouseover', 'node', (evt) => {
+      const node = evt.target;
+      const nodeData = node.data();
+      if (nodeData.introduction && nodeData.introduction.body) {
+        tooltipContent = nodeData.introduction.body;
+        const renderedPosition = node.renderedPosition();
+        tooltipStyle = `
+          display: block;
+          left: ${renderedPosition.x + 15}px;
+          top: ${renderedPosition.y + 15}px;
+        `;
+      }
+    });
+
+    // マウスアウトイベント
+    cyInstance.on('mouseout', 'node', () => {
+      tooltipContent = '';
+      tooltipStyle = 'display: none;';
+    });
   })
 
   $: if (cyInstance && graphData) {
@@ -63,6 +88,19 @@
     width: 100%;
     height: 80vh; /* 画面の高さの80%を使用 */
     border: 1px solid #ccc;
+    position: relative; /* ツールチップの配置のために必要 */
+  }
+
+  .tooltip {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 8px;
+    border-radius: 4px;
+    pointer-events: none; /* ツールチップがマウスイベントをブロックしないようにする */
+    z-index: 1000;
+    max-width: 300px; /* ツールチップの最大幅 */
+    white-space: pre-wrap; /* 改行を保持 */
   }
 </style>
 
@@ -70,4 +108,7 @@
   {#if cyInstance}
     <slot/>
   {/if}
+  <div class="tooltip" style={tooltipStyle}>
+    {tooltipContent}
+  </div>
 </div>

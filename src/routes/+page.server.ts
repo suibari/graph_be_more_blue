@@ -2,6 +2,44 @@ import { AtpAgent } from '@atproto/api';
 import type { ServerLoad } from '@sveltejs/kit';
 import { imageToBase64 } from '$lib/server/util';
 
+export type GraphNode = {
+  data: {
+    id: string;
+    img: string | null;
+    name: string;
+    rank: number;
+    handle: string;
+    introduction: {
+      body: string;
+      lang: string;
+      tags: string[];
+      $type: string;
+      subject: string;
+      createdAt: string;
+      updatedAt: string;
+    } | null;
+  };
+  group: 'nodes';
+};
+
+export type GraphEdge = {
+  data: {
+    source: string;
+    target: string;
+  };
+  group: 'edges';
+};
+
+export type GraphData = {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+};
+
+export type PageServerLoadOutput = {
+  graphData: GraphData;
+  initialCenterDid: string;
+};
+
 const agent = new AtpAgent({
   service: 'https://bsky.social',
 });
@@ -75,7 +113,7 @@ import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
 import { getPds } from '$lib/server/getPds';
 import { Buffer } from 'buffer';
 
-export const load: ServerLoad = async () => {
+export const load: ServerLoad = async (): Promise<PageServerLoadOutput> => {
   try {
     console.log('Fetching data from Bluesky...');
 
@@ -86,6 +124,7 @@ export const load: ServerLoad = async () => {
           nodes: [],
           edges: [],
         },
+        initialCenterDid: '', // ここにinitialCenterDidを追加
       };
     }
 
@@ -94,14 +133,21 @@ export const load: ServerLoad = async () => {
       password: BSKY_PASSWORD,
     });
 
-    const soAsanoHandle = 'so-asano.com';
-    const soAsanoProfile = await agent.resolveHandle({handle: soAsanoHandle});
-    const soAsanoDid = soAsanoProfile.data.did;
+    const centerNodeHandle = 'so-asano.com'; // 変数名を変更
+    const centerNodeProfile = await agent.resolveHandle({handle: centerNodeHandle}); // 変数名を変更
+    const centerNodeDid = centerNodeProfile.data.did; // 変数名を変更
 
     const introRecords = await fetchAllRecords(
-      soAsanoDid, // DIDを使用
+      centerNodeDid, // DIDを使用
       'com.skybemoreblue.intro.introduction'
     );
+
+    const introRecordsMap = new Map<string, any>();
+    introRecords.forEach((record: any) => {
+      if (record.value?.subject) {
+        introRecordsMap.set(record.value.subject, record.value);
+      }
+    });
 
     const initialDids = new Set<string>();
     introRecords.forEach((record: any) => {
@@ -109,7 +155,7 @@ export const load: ServerLoad = async () => {
         initialDids.add(record.value.subject);
       }
     });
-    initialDids.add(soAsanoDid);
+    initialDids.add(centerNodeDid); // 変数名を変更
 
     const profiles = await fetchAllProfiles(Array.from(initialDids));
 
@@ -124,6 +170,8 @@ export const load: ServerLoad = async () => {
         followsCount: profile.followsCount || 1,
       });
 
+      const introduction = introRecordsMap.get(profile.did); // ここで紹介文を取得
+
       nodes.push({
         data: {
           id: profile.did,
@@ -131,16 +179,17 @@ export const load: ServerLoad = async () => {
           name: profile.displayName || profile.handle,
           rank: rank,
           handle: profile.handle,
+          introduction: introduction || null, // 紹介文を追加
         },
         group: 'nodes',
       });
     }
 
     introRecords.forEach((record: any) => {
-      if (record.value?.subject && didToProfileMap.has(soAsanoDid) && didToProfileMap.has(record.value.subject)) {
+      if (record.value?.subject && didToProfileMap.has(centerNodeDid) && didToProfileMap.has(record.value.subject)) { // 変数名を変更
         edges.push({
           data: {
-            source: soAsanoDid,
+            source: centerNodeDid, // 変数名を変更
             target: record.value.subject,
           },
           group: 'edges',
@@ -153,6 +202,7 @@ export const load: ServerLoad = async () => {
         nodes,
         edges,
       },
+      initialCenterDid: centerNodeDid, // 変数名を変更
     };
   } catch (error) {
     console.error('Error in load function:', error);
@@ -161,6 +211,7 @@ export const load: ServerLoad = async () => {
         nodes: [],
         edges: [],
       },
+      initialCenterDid: '', // 変数名を変更
     };
   }
 };

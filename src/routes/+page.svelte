@@ -3,13 +3,36 @@
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
 
   export let data: PageData;
   let graphData = data.graphData; // let に変更して更新可能にする
 
+  let selectedNodeDid: string | null = null;
+  let selectedNodeIntroduction: string = '';
+
+  onMount(() => {
+    if (data.initialCenterDid && graphData && graphData.nodes.length > 0) {
+      selectedNodeDid = data.initialCenterDid;
+      const initialNode = graphData.nodes.find(node => node.data.id === selectedNodeDid);
+      if (initialNode && initialNode.data.introduction && initialNode.data.introduction.body) {
+        selectedNodeIntroduction = initialNode.data.introduction.body;
+      }
+    }
+  });
+
   async function handleNodeTap(event: CustomEvent<{ did: string }>) {
     const did = event.detail.did;
     console.log('Node tapped:', did);
+
+    // 選択されたノードのDIDと紹介文を更新
+    selectedNodeDid = did;
+    const tappedNode = graphData.nodes.find(node => node.data.id === did);
+    if (tappedNode && tappedNode.data.introduction && tappedNode.data.introduction.body) {
+      selectedNodeIntroduction = tappedNode.data.introduction.body;
+    } else {
+      selectedNodeIntroduction = '';
+    }
 
     // graphDataがundefinedまたはnullの場合、処理を中断
     if (!graphData || !graphData.nodes || !graphData.edges) {
@@ -49,9 +72,9 @@
 
 <div class="container mx-auto p-4">
   <h1 class="text-3xl font-bold mb-4">GraphBeMoreBlue!</h1>
-  {#if graphData}
-    <Graph {graphData} on:nodeTap={handleNodeTap} />
-  {:else}
-    <p>Loading graph data...</p>
-  {/if}
+    {#if graphData}
+      <Graph {graphData} on:nodeTap={handleNodeTap} />
+    {:else}
+      <p>Loading graph data...</p>
+    {/if}
 </div>
