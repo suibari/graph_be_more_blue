@@ -25,6 +25,22 @@
       wheelSensitivity: 0.1,
     });
 
+    // 相互フォロー関係にあるエッジにクラスを付与
+    cyInstance.edges().forEach(edge => {
+      const source = edge.source().id();
+      const target = edge.target().id();
+      const isMutual = edge.cy().edges(`[source = "${target}"][target = "${source}"]`).length > 0;
+      if (isMutual) {
+        edge.addClass('mutual');
+      }
+    });
+
+    // 中心ノードを選択状態にする
+    const centerNode = cyInstance.nodes('[id = "did:plc:ragtjsm2j2vryqud6e3f5n2c"]');
+    if (centerNode.length > 0) {
+      centerNode.select();
+    }
+
     // 初期ロード時にレイアウトを適用
     cyInstance.layout(GraphLayout).run();
 
@@ -39,7 +55,10 @@
     });
 
     cyInstance.on('tap', 'node', (evt) => {
+      if (!cyInstance) return;
       const node = evt.target;
+      cyInstance.nodes().unselect();
+      node.select();
       dispatch('nodeTap', { did: node.id() });
     });
 
@@ -66,6 +85,15 @@
     const elementsToAdd = newElements.filter(el => !existingIds.has(el.data.id));
     if (elementsToAdd.length > 0) {
       cyInstance.add(elementsToAdd);
+      // 相互フォロー関係にあるエッジにクラスを付与
+      cyInstance.edges().forEach(edge => {
+        const source = edge.source().id();
+        const target = edge.target().id();
+        const isMutual = edge.cy().edges(`[source = "${target}"][target = "${source}"]`).length > 0;
+        if (isMutual) {
+          edge.addClass('mutual');
+        }
+      });
     }
 
     // graphDataが変更されたら常にレイアウトを再適用

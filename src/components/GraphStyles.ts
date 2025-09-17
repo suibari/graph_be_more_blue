@@ -18,11 +18,8 @@ export default [
   {
     selector: 'node:selected',
     style: {
-      'background-color': 'darkred',
-      'color': 'white',
-      'border-color': 'darkred',
-      'line-color': '#0e76ba',
-      'target-arrow-color': '#0e76ba'
+      'border-width': '5px',
+      'border-color': 'black',
     }
   },
   {
@@ -35,15 +32,15 @@ export default [
     selector: 'edge',
     style: {
       'curve-style': 'straight',
-      'color': 'darkred',
-      'text-background-color': '#ffffff',
-      'text-background-opacity': '1' as any,
-      'text-background-padding': '3px',
       'width': '1px',
-      'target-arrow-shape': 'triangle',
-      'line-color': 'darkred',
-      'target-arrow-color': 'darkred',
-      'font-weight': 'bold' as any
+      'line-color': 'gray',
+    }
+  },
+  {
+    selector: 'edge.mutual',
+    style: {
+      'width': '5px',
+      'line-color': 'black',
     }
   },
 ]

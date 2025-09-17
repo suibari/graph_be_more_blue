@@ -48,7 +48,7 @@ export default {
   sampleSize: 25,
 
   // ノード間の分離量
-  nodeSeparation: 75,
+  nodeSeparation: 200,
 
   // パワーイテレーションの許容誤差
   piTol: 0.0000001,
@@ -56,19 +56,13 @@ export default {
   /* 増分レイアウトオプション */
 
   // ノードの反発（重ならない）倍率
-  nodeRepulsion: (node: any) => {
-    if (node.isParent()) {
-      return Math.pow(10, 10);
-    }
-    return 4500; // デフォルト値に戻すか、適切な値を設定
-  },
+  nodeRepulsion: 4500,
 
   // 理想的なエッジ（ネストしていない）の長さ
-  // idealEdgeLength: edge => 50,
-  idealEdgeLength: (edge: any) => 150,
+  idealEdgeLength: 200,
 
   // エッジの力を計算するための除数
-  edgeElasticity: (edge: any) => 0.45,
+  edgeElasticity: 0.45,
 
   // ネストされたエッジの理想的なエッジ長さを計算するためのネスティング係数（倍率）
   nestingFactor: 0.1,
@@ -93,16 +87,13 @@ export default {
   gravity: 0.25,
 
   // コンパウンドのための重力範囲（定数）
-  // gravityRangeCompound: 1.5,
-  gravityRangeCompound: 1.0,
+  gravityRangeCompound: 1.5,
 
   // コンパウンドのための重力の力（定数）
-  // gravityCompound: 1.0,
-  gravityCompound: 2.0,
+  gravityCompound: 1.0,
 
   // 重力範囲（定数）
-  // gravityRange: 3.8,
-  gravityRange: 3.0,
+  gravityRange: 3.8,
 
   // 増分レイアウトの初期冷却係数
   initialEnergyOnIncremental: 0.3,
