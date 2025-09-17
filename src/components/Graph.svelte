@@ -8,14 +8,16 @@
 
   export let graphData: { nodes: any[]; edges: any[] };
   export let minMembersPerTag = 3;
+  export let initialSelectedNodeDid: string | null = null; // 初期選択ノードのDIDを追加
+  export let isLoading: boolean = false; // ローディング状態を追加
 
   let container: HTMLDivElement;
   let cyInstance: cytoscape.Core | null = null;
   const dispatch = createEventDispatcher();
 
-  // ツールチップの状態管理
-  let tooltipContent: string = '';
-  let tooltipStyle: string = 'display: none;';
+  // ツールチップの状態管理 (Graph.svelteでは直接管理しないため削除)
+  // let tooltipContent: string = '';
+  // let tooltipStyle: string = 'display: none;';
 
   onMount(() => {
     cytoscape.use( fcose );
@@ -39,10 +41,12 @@
       }
     });
 
-    // 中心ノードを選択状態にする
-    const centerNode = cyInstance.nodes('[id = "did:plc:ragtjsm2j2vryqud6e3f5n2c"]');
-    if (centerNode.length > 0) {
-      centerNode.select();
+    // 初期中心ノードを選択状態にする
+    if (initialSelectedNodeDid) {
+      const centerNode = cyInstance.nodes(`[id = "${initialSelectedNodeDid}"]`);
+      if (centerNode.length > 0) {
+        centerNode.select();
+      }
     }
 
     // 初期ロード時にレイアウトを適用
@@ -114,6 +118,15 @@
 
     // graphDataが変更されたら常にレイアウトを再適用
     cyInstance.layout(GraphLayout).run();
+
+    // graphDataが更新された際にも、もし選択中のノードがなければ初期選択ノードを選択状態にする
+    // ただし、これはノードタップ時の選択解除と競合する可能性があるため、ここでは削除
+    // if (initialSelectedNodeDid && cyInstance.nodes(':selected').empty()) {
+    //   const centerNode = cyInstance.nodes(`[id = "${initialSelectedNodeDid}"]`);
+    //   if (centerNode.length > 0) {
+    //     centerNode.select();
+    //   }
+    // }
   }
 
   const processGraphData = (data: { nodes: any[]; edges: any[] }) => {
@@ -184,8 +197,8 @@
 <style>
   .graph {
     width: 100%;
-    height: 80vh; /* 画面の高さの80%を使用 */
-    border: 1px solid #ccc;
+    height: 100vh; /* 画面の高さの100%を使用 */
+    /* border: 1px solid #ccc; */ /* 枠線を削除 */
     position: relative; /* ツールチップの配置のために必要 */
   }
 
@@ -200,9 +213,41 @@
     max-width: 300px; /* ツールチップの最大幅 */
     white-space: pre-wrap; /* 改行を保持 */
   }
+
+  .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1001;
+  }
+
+  .loading-spinner {
+    border: 8px solid #f3f3f3; /* Light grey */
+    border-top: 8px solid #3498db; /* Blue */
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 2s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 </style>
 
 <div class="graph" bind:this={container}>
+  {#if isLoading}
+    <div class="loading-overlay">
+      <div class="loading-spinner"></div>
+    </div>
+  {/if}
   {#if cyInstance}
     <slot/>
   {/if}

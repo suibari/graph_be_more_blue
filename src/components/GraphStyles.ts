@@ -20,6 +20,14 @@ export default [
     style: {
       'border-width': '5px',
       'border-color': 'blue',
+      'label': 'data(name)', // 選択されたノードのnameを表示
+      'text-valign': 'top' as any, // ノードの上に表示
+      'text-margin-y': -10, // ノードからの距離を調整
+      'font-size': '16px',
+      'font-weight': 'bold' as any,
+      'color': 'black', // テキストの色
+      'text-outline-color': 'white', // テキストのアウトライン色
+      'text-outline-width': 2, // テキストのアウトライン幅
     }
   },
   {

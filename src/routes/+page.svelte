@@ -12,6 +12,7 @@
   let selectedNodeDid: string | null = data.initialCenterDid; // タップされたノード、初期値は中心ノード
   let hoveredNodeDid: string | null = null; // マウスオーバーされたノード
   let hoveredNodePosition: { x: number; y: number } | null = null; // マウスオーバーされたノードの描画位置
+  let isLoading = !graphData; // 初期ロード状態を追加
 
   // 表示する紹介文とツールチップのスタイルをリアクティブに計算
   $: displayIntroduction = '';
@@ -28,7 +29,9 @@
         const intro = hoveredNode.data.introductions.find(intro => intro.author === authorDidToCheck);
 
         if (intro && intro.body) {
-          displayIntroduction = intro.body;
+          // アカウントのnameを太字で表示
+          const nodeName = hoveredNode.data.name || hoveredNode.data.handle;
+          displayIntroduction = `<strong>${nodeName}</strong>\n${intro.body}`;
           if (hoveredNodePosition) {
             tooltipStyle = `
               display: block;
@@ -54,6 +57,7 @@
       return;
     }
 
+    isLoading = true; // ロード開始
     const response = await fetch('/expandGraph', {
       method: 'POST',
       headers: {
@@ -100,6 +104,7 @@
     } else {
       console.error('Failed to expand graph:', response.statusText);
     }
+    isLoading = false; // ロード終了
   }
 
   function handleNodeMouseover(event: CustomEvent<{ did: string; renderedPosition: { x: number; y: number } }>) {
@@ -129,17 +134,15 @@
 
 <div class="container mx-auto p-4">
   <h1 class="text-3xl font-bold mb-4">GraphBeMoreBlue!</h1>
-    {#if graphData}
-      <Graph
-        {graphData}
-        on:nodeTap={handleNodeTap}
-        on:nodeMouseover={handleNodeMouseover}
-        on:nodeMouseout={handleNodeMouseout}
-      />
-      <div class="tooltip" style={tooltipStyle}>
-        {displayIntroduction}
-      </div>
-    {:else}
-      <p>Loading graph data...</p>
-    {/if}
+    <Graph
+      {graphData}
+      initialSelectedNodeDid={initialCenterDid}
+      {isLoading}
+      on:nodeTap={handleNodeTap}
+      on:nodeMouseover={handleNodeMouseover}
+      on:nodeMouseout={handleNodeMouseout}
+    />
+    <div class="tooltip" style={tooltipStyle}>
+      {@html displayIntroduction}
+    </div>
 </div>
