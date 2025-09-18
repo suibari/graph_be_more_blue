@@ -7,7 +7,7 @@
   import type { NodeDataDefinition } from "cytoscape";
 
   export let graphData: { nodes: any[]; edges: any[] };
-  export let minMembersPerTag = 3;
+  export let minMembersPerTag = 2;
   export let initialSelectedNodeDid: string | null = null; // 初期選択ノードのDIDを追加
   export let isLoading: boolean = false; // ローディング状態を追加
 
@@ -203,27 +203,34 @@
 
   // エッジのスタイルを更新する関数
   function updateEdgeStyles(cy: cytoscape.Core, selectedNodeDid: string | null) {
-    cy.edges().removeClass('mutual tapped-mutual tapped-unilateral'); // 既存のクラスをすべて削除
+    cy.edges().removeClass('mutual tapped-mutual tapped-unilateral-outgoing'); // 既存のクラスをすべて削除
 
     cy.edges().forEach(edge => {
       const sourceId = edge.source().id();
       const targetId = edge.target().id();
 
       const isMutual = cy.edges(`[source = "${targetId}"][target = "${sourceId}"]`).length > 0;
-      const isConnectedToSelectedNode = selectedNodeDid && (sourceId === selectedNodeDid || targetId === selectedNodeDid);
 
-      if (isConnectedToSelectedNode) {
-        if (isMutual) {
-          edge.addClass('tapped-mutual'); // タップノードから直接の紹介ノードかつ相互紹介：太い青線
-        } else {
-          edge.addClass('tapped-unilateral'); // タップノードから直接の紹介ノードかつ片方紹介：細い青線
+      if (selectedNodeDid) {
+        // ① タップノードから直接の紹介ノードかつ相互紹介：太い青線
+        if (isMutual && (sourceId === selectedNodeDid || targetId === selectedNodeDid)) {
+          edge.addClass('tapped-mutual');
         }
+        // ② タップノードから直接の紹介ノードかつ片方紹介（タップノードから相手ノードに対してのみ）
+        else if (!isMutual && sourceId === selectedNodeDid && targetId !== selectedNodeDid) {
+          edge.addClass('tapped-unilateral-outgoing');
+        }
+        // ③ タップノードとは無関係だが、相互紹介状態：太い黒線
+        else if (isMutual && sourceId !== selectedNodeDid && targetId !== selectedNodeDid) {
+          edge.addClass('mutual');
+        }
+        // ④ その他：細い灰線 (デフォルトのエッジスタイルが適用される)
       } else {
+        // タップノードが選択されていない場合
         if (isMutual) {
-          edge.addClass('mutual'); // タップノードとは無関係だが、相互紹介状態：太い黒線
+          edge.addClass('mutual'); // 相互紹介は太い黒線
         }
-        // タップノードとは無関係だが、片方紹介状態：細い黒線 (デフォルトのエッジスタイルが適用される)
-        // その他：細い黒線 (デフォルトのエッジスタイルが適用される)
+        // その他は細い灰線 (デフォルトのエッジスタイルが適用される)
       }
     });
   }

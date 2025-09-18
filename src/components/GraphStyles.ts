@@ -47,7 +47,7 @@ export default [
     style: {
       'curve-style': 'straight',
       'width': '1px',
-      'line-color': 'gray', // デフォルトを黒に変更
+      'line-color': 'gray', // デフォルトを灰に変更
     }
   },
   {
@@ -65,7 +65,7 @@ export default [
     }
   },
   {
-    selector: 'edge.tapped-unilateral',
+    selector: 'edge.tapped-unilateral-outgoing', // 新しいクラス
     style: {
       'width': '1px',
       'line-color': 'blue',
