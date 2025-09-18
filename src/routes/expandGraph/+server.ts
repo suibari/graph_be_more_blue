@@ -3,11 +3,7 @@ import { json } from '@sveltejs/kit';
 import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
 import { getPds } from '$lib/server/getPds';
 import { imageToBase64 } from '$lib/server/util';
-import { createOrRefreshSession } from '$lib/server/graphService';
-
-const agent = new AtpAgent({
-  service: 'https://bsky.social',
-});
+import { agent, createOrRefreshSession } from '$lib/server/graphService';
 
 const RANK_COEF = 30;
 const RANK_BIAS = 50;

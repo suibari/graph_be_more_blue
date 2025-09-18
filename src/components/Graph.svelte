@@ -58,13 +58,6 @@
     // ------
     // イベントリスナー
     // ------
-    cyInstance.on('add', () => {
-      if (!cyInstance) return;
-      cyInstance
-        .layout(GraphLayout)
-        .run()
-    });
-
     cyInstance.on('tap', 'node', (evt) => {
       if (!cyInstance) return;
       const node = evt.target;
@@ -104,7 +97,10 @@
     // 新しい要素のみを追加
     const elementsToAdd = processedElements.filter(el => !existingIds.has(el.data.id));
 
-    if (elementsToAdd.length > 0) {
+    const nodesToAdd = elementsToAdd.filter(el => el.group === 'nodes');
+    const edgesToAdd = elementsToAdd.filter(el => el.group === 'edges');
+
+    if (nodesToAdd.length > 0 || edgesToAdd.length > 0) {
       cyInstance.add(elementsToAdd);
     }
 
@@ -112,24 +108,45 @@
     processedElements.forEach(processedEl => {
       if (processedEl.group === 'nodes' && existingIds.has(processedEl.data.id)) {
         const currentCyNode = cyInstance?.getElementById(processedEl.data.id);
-        if (currentCyNode && currentCyNode.data('parent') !== processedEl.data.parent) {
-          currentCyNode.data('parent', processedEl.data.parent);
+        if (currentCyNode) {
+          // parentプロパティが変更された場合のみ更新
+          if (currentCyNode.data('parent') !== processedEl.data.parent) {
+            currentCyNode.data('parent', processedEl.data.parent);
+          }
+          // その他のノードデータも更新（例: introductionsの変更を反映）
+          // ただし、Cytoscape.jsはdataオブジェクト全体を置き換えると再描画される可能性があるため、
+          // 必要なプロパティのみを更新するように注意
+          // 現状、introductionsはGraph.svelteでは直接描画に影響しないため、ここでは更新しない
         }
       }
     });
 
-    // 相互フォロー関係にあるエッジにクラスを付与
+    // 既存エッジのデータを更新し、相互フォロー関係のクラスを付与
     cyInstance.edges().forEach(edge => {
       const source = edge.source().id();
       const target = edge.target().id();
       const isMutual = edge.cy().edges(`[source = "${target}"][target = "${source}"]`).length > 0;
-      if (isMutual) {
+      
+      // mutualクラスの有無を更新
+      if (isMutual && !edge.hasClass('mutual')) {
         edge.addClass('mutual');
+      } else if (!isMutual && edge.hasClass('mutual')) {
+        edge.removeClass('mutual');
+      }
+
+      // エッジのデータ自体が変更された場合（例: 太さの変更など）を考慮
+      // GraphStylesでエッジのスタイルがデータに依存している場合、
+      // ここでedge.data()を更新することでスタイルが再適用される
+      const newEdgeData = graphData.edges.find(e => e.data.source === source && e.data.target === target)?.data;
+      if (newEdgeData && JSON.stringify(edge.data()) !== JSON.stringify(newEdgeData)) {
+        edge.data(newEdgeData);
       }
     });
 
-    // graphDataが変更されたら常にレイアウトを再適用
-    cyInstance.layout(GraphLayout).run();
+    // ノードが追加された場合のみレイアウトを再適用
+    if (nodesToAdd.length > 0) {
+      cyInstance.layout(GraphLayout).run();
+    }
 
     // graphDataが更新された際にも、もし選択中のノードがなければ初期選択ノードを選択状態にする
     // ただし、これはノードタップ時の選択解除と競合する可能性があるため、ここでは削除

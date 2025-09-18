@@ -101,13 +101,8 @@
       const nodesToAdd = newGraphData.graphData.nodes.filter((node: any) => !existingNodeIds.has(node.data.id));
       const edgesToAdd = newGraphData.graphData.edges.filter((edge: any) => !existingEdgeIds.has(`${edge.data.source}-${edge.data.target}`));
 
-      if (nodesToAdd.length === 0 && edgesToAdd.length === 0) {
-        const tappedNode = graphData.nodes.find(node => node.data.id === did);
-        const nodeName = tappedNode?.data.name || tappedNode?.data.handle || 'このユーザー';
-        showSnackbar(`${nodeName}さんはまだ誰も紹介していないみたい`, 'info');
-        isLoading = false; // ロード終了
-        return; // 変更がない場合はここで処理を終了
-      }
+      let introductionsUpdated = false;
+      let edgesUpdated = false; // エッジの更新を検出するフラグ
 
       // 既存ノードの情報を更新するロジックを修正
       const updatedNodes = graphData.nodes.map(node => {
@@ -122,6 +117,7 @@
             // 重複を避ける（同じauthorとsubjectの紹介文は追加しない）
             if (!existingIntros.some((existingIntro: any) => existingIntro.author === newIntro.author && existingIntro.subject === newIntro.subject)) {
               combinedIntros.push(newIntro);
+              introductionsUpdated = true; // 紹介文が更新されたことをマーク
             }
           });
 
@@ -130,10 +126,47 @@
         return node;
       });
 
-      graphData = {
-        nodes: [...updatedNodes, ...nodesToAdd],
-        edges: [...graphData.edges, ...edgesToAdd],
-      };
+      // 既存エッジの情報を更新するロジックを追加
+      const updatedEdges = graphData.edges.map(edge => {
+        const newEdgeData = newGraphData.graphData.edges.find((e: any) => e.data.source === edge.data.source && e.data.target === edge.data.target);
+        if (newEdgeData) {
+          // エッジのプロパティ（例: 太さ）が変更されたかを検出
+          // ここでは単純に新しいデータがあれば更新とみなす
+          if (JSON.stringify(edge.data) !== JSON.stringify(newEdgeData.data)) {
+            edgesUpdated = true;
+            return { ...edge, data: { ...edge.data, ...newEdgeData.data } };
+          }
+        }
+        return edge;
+      });
+
+      // 新しいエッジが追加された場合も edgesUpdated を true にする
+      if (edgesToAdd.length > 0) {
+        edgesUpdated = true;
+      }
+
+      if (nodesToAdd.length === 0 && edgesToAdd.length === 0 && !introductionsUpdated && !edgesUpdated) {
+        // ノード、エッジ、紹介文すべてに更新がない場合
+        const tappedNode = graphData.nodes.find(node => node.data.id === did);
+        const nodeName = tappedNode?.data.name || tappedNode?.data.handle || 'このユーザー';
+        showSnackbar(`${nodeName}さんはまだ誰も紹介していないみたい`, 'info');
+        isLoading = false; // ロード終了
+        return; // 変更がない場合はここで処理を終了
+      }
+
+      // ノードに変更がある場合、またはエッジに変更がある場合
+      if (nodesToAdd.length > 0 || edgesToAdd.length > 0) {
+        // 新しいノードとエッジを追加
+        graphData.nodes = [...updatedNodes, ...nodesToAdd];
+        graphData.edges = [...updatedEdges, ...edgesToAdd];
+      } else if (introductionsUpdated || edgesUpdated) {
+        // ノードの追加はないが、エッジまたは紹介文が更新された場合
+        // 既存のノードとエッジを更新
+        graphData.nodes = updatedNodes;
+        graphData.edges = updatedEdges;
+        // この場合、グラフ全体の再描画は行わないが、エッジの更新は反映される
+        // スナックバーも表示しない
+      }
     } else {
       console.error('Failed to expand graph:', response.statusText);
       showSnackbar('サーバーエラーが発生しました。', 'error');

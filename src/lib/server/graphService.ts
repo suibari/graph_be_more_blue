@@ -8,7 +8,7 @@ import type { PageServerLoadOutput } from '../../$types';
 let accessJwt: string | undefined;
 let refreshJwt: string | undefined;
 
-const agent = new AtpAgent({
+export const agent = new AtpAgent({
   service: 'https://bsky.social',
 });
 
