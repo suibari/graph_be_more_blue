@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
 import { getPds } from '$lib/server/getPds';
 import { imageToBase64 } from '$lib/server/util';
+import { createOrRefreshSession } from '$lib/server/graphService';
 
 const agent = new AtpAgent({
   service: 'https://bsky.social',
@@ -88,10 +89,7 @@ export async function POST({ request }) {
     return json({ error: 'Server configuration error' }, { status: 500 });
   }
 
-  await agent.login({
-    identifier: BSKY_DID,
-    password: BSKY_PASSWORD,
-  });
+  await createOrRefreshSession();
 
   const relatedRecords = await fetchAllRecords(
     didToExpand,

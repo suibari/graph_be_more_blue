@@ -5,9 +5,50 @@ import { getPds } from '$lib/server/getPds';
 import { Buffer } from 'buffer';
 import type { PageServerLoadOutput } from '../../$types';
 
+let accessJwt: string | undefined;
+let refreshJwt: string | undefined;
+
 const agent = new AtpAgent({
   service: 'https://bsky.social',
 });
+
+async function initAgent() {
+  if (!BSKY_DID || !BSKY_PASSWORD) {
+    console.error('Bluesky DID or password not set in environment variables.');
+    throw new Error('Bluesky DID or password not set.');
+  }
+  const res = await agent.login({
+    identifier: BSKY_DID,
+    password: BSKY_PASSWORD,
+  });
+  accessJwt = res.data.accessJwt;
+  refreshJwt = res.data.refreshJwt;
+}
+
+export async function createOrRefreshSession() {
+  if (!accessJwt && !refreshJwt) {
+    await initAgent();
+    return;
+  }
+
+  try {
+    await agent.getTimeline();  // 成功すればそのまま
+  } catch (err: any) {
+    // 失敗した場合（トークン切れなど）
+    if (
+      err?.response?.data?.error === "ExpiredToken" || 
+      err?.message?.includes("ExpiredToken")
+    ) {
+      const refresh = await agent.com.atproto.server.refreshSession();
+      accessJwt = refresh.data.accessJwt;
+      refreshJwt = refresh.data.refreshJwt;
+      console.log("[INFO] token was expired, so refreshed the session.");
+    } else {
+      console.error("[ERROR] unexpected error:", err);
+      throw err;
+    }
+  }
+}
 
 const RANK_COEF = 30;
 const RANK_BIAS = 50;
@@ -86,10 +127,7 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
       };
     }
 
-    await agent.login({
-      identifier: BSKY_DID,
-      password: BSKY_PASSWORD,
-    });
+    await createOrRefreshSession();
 
     const centerNodeProfile = await agent.resolveHandle({handle: centerNodeHandle});
     const centerNodeDid = centerNodeProfile.data.did;
