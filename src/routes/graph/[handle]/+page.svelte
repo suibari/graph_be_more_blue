@@ -4,9 +4,22 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { showSnackbar } from '$lib/stores/snackbar';
 
   export let data: PageData;
   let graphData = data.graphData;
+
+  onMount(() => {
+    if (data.noIntroductionData) {
+      const centerNode = graphData.nodes.find(node => node.data.id === initialCenterDid);
+      const nodeName = centerNode?.data.name || centerNode?.data.handle || 'このユーザー';
+      showSnackbar(
+        `${nodeName}さんはまだ誰も紹介していないみたい。Let's go SkyBeMoreBlue !!`,
+        'info',
+        { href: 'https://www.skybemoreblue.com/', text: 'skybemoreblue.com' }
+      );
+    }
+  });
 
   let initialCenterDid: string | null = data.initialCenterDid;
   let selectedNodeDid: string | null = data.initialCenterDid; // タップされたノード、初期値は中心ノード
@@ -88,6 +101,14 @@
       const nodesToAdd = newGraphData.graphData.nodes.filter((node: any) => !existingNodeIds.has(node.data.id));
       const edgesToAdd = newGraphData.graphData.edges.filter((edge: any) => !existingEdgeIds.has(`${edge.data.source}-${edge.data.target}`));
 
+      if (nodesToAdd.length === 0 && edgesToAdd.length === 0) {
+        const tappedNode = graphData.nodes.find(node => node.data.id === did);
+        const nodeName = tappedNode?.data.name || tappedNode?.data.handle || 'このユーザー';
+        showSnackbar(`${nodeName}さんはまだ誰も紹介していないみたい`, 'info');
+        isLoading = false; // ロード終了
+        return; // 変更がない場合はここで処理を終了
+      }
+
       // 既存ノードの情報を更新するロジックを修正
       const updatedNodes = graphData.nodes.map(node => {
         const newNodeData = newGraphData.graphData.nodes.find((n: any) => n.data.id === node.data.id);
@@ -115,6 +136,7 @@
       };
     } else {
       console.error('Failed to expand graph:', response.statusText);
+      showSnackbar('サーバーエラーが発生しました。', 'error');
     }
     isLoading = false; // ロード終了
   }
