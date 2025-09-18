@@ -53,6 +53,11 @@
       const node = evt.target;
       const nodeId = node.id();
 
+      // 親ノードはタップイベントを無視
+      if (node.hasClass('parent')) {
+        return;
+      }
+
       cyInstance.nodes().unselect();
       node.select();
 

@@ -83,7 +83,7 @@ export default [
       'border-width': '2px',
       'border-color': '#c0c0c0',
       'shape': 'round-rectangle' as any,
-      'padding': '10px'
+      'padding': '10px',
     }
   }
 ]
