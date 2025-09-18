@@ -3,48 +3,7 @@ import { imageToBase64 } from '$lib/server/util';
 import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
 import { getPds } from '$lib/server/getPds';
 import { Buffer } from 'buffer';
-
-export type Introduction = {
-  body: string;
-  lang: string;
-  tags: string[];
-  $type: string;
-  subject: string;
-  createdAt: string;
-  updatedAt: string;
-  author: string;
-};
-
-export type GraphNode = {
-  data: {
-    id: string;
-    img: string | null;
-    name: string;
-    rank: number;
-    handle: string;
-    introductions: Introduction[];
-    tags?: string[];
-  };
-  group: 'nodes';
-};
-
-export type GraphEdge = {
-  data: {
-    source: string;
-    target: string;
-  };
-  group: 'edges';
-};
-
-export type GraphData = {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-};
-
-export type PageServerLoadOutput = {
-  graphData: GraphData;
-  initialCenterDid: string;
-};
+import type { PageServerLoadOutput } from '../../$types';
 
 const agent = new AtpAgent({
   service: 'https://bsky.social',
@@ -135,26 +94,39 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
     const centerNodeProfile = await agent.resolveHandle({handle: centerNodeHandle});
     const centerNodeDid = centerNodeProfile.data.did;
 
-    const introRecords = await fetchAllRecords(
+    const initialDids = new Set<string>();
+    initialDids.add(centerNodeDid);
+
+    // Fetch initial introductions from the center node to discover connected nodes
+    const centerNodeIntroRecords = await fetchAllRecords(
       centerNodeDid,
       'com.skybemoreblue.intro.introduction'
     );
-
-    const introRecordsMap = new Map<string, any>();
-    introRecords.forEach((record: any) => {
-      if (record.value?.subject) {
-        const authorDid = record.uri.split('/')[2];
-        introRecordsMap.set(record.value.subject, { ...record.value, author: authorDid });
-      }
-    });
-
-    const initialDids = new Set<string>();
-    introRecords.forEach((record: any) => {
+    centerNodeIntroRecords.forEach((record: any) => {
       if (record.value?.subject) {
         initialDids.add(record.value.subject);
       }
     });
-    initialDids.add(centerNodeDid);
+
+    // Fetch all introduction records where any of the initialDids are authors
+    const allIntroRecordsPromises = Array.from(initialDids).map(did =>
+      fetchAllRecords(did, 'com.skybemoreblue.intro.introduction')
+    );
+    const allIntroRecordsArrays = await Promise.all(allIntroRecordsPromises);
+    const allIntroRecords = allIntroRecordsArrays.flat();
+
+    const introRecordsMap = new Map<string, any[]>();
+    allIntroRecords.forEach((record: any) => {
+      if (record.value?.subject) {
+        const authorDid = record.uri.split('/')[2];
+        const intro = { ...record.value, author: authorDid };
+        if (introRecordsMap.has(record.value.subject)) {
+          introRecordsMap.get(record.value.subject)?.push(intro);
+        } else {
+          introRecordsMap.set(record.value.subject, [intro]);
+        }
+      }
+    });
 
     const profiles = await fetchAllProfiles(Array.from(initialDids));
 
@@ -169,7 +141,13 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
         followsCount: profile.followsCount || 1,
       });
 
-      const introduction = introRecordsMap.get(profile.did);
+      const introductions = introRecordsMap.get(profile.did) || [];
+      const allTags = new Set<string>();
+      introductions.forEach((intro) => {
+        if (intro.tags) {
+          intro.tags.forEach((tag: string) => allTags.add(tag));
+        }
+      });
 
       nodes.push({
         data: {
@@ -178,14 +156,14 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
           name: profile.displayName || profile.handle,
           rank: rank,
           handle: profile.handle,
-          introductions: introduction ? [introduction] : [],
-          tags: introduction ? introduction.tags : [],
+          introductions: introductions,
+          tags: Array.from(allTags),
         },
         group: 'nodes',
       });
     }
 
-    introRecords.forEach((record: any) => {
+    centerNodeIntroRecords.forEach((record: any) => {
       if (record.value?.subject && didToProfileMap.has(centerNodeDid) && didToProfileMap.has(record.value.subject)) {
         edges.push({
           data: {
