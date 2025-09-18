@@ -14,11 +14,8 @@
   let container: HTMLDivElement;
   let cyInstance: cytoscape.Core | null = null;
   const dispatch = createEventDispatcher();
-  let tappedNodeDids = new Set<string>();
-
-  // ツールチップの状態管理 (Graph.svelteでは直接管理しないため削除)
-  // let tooltipContent: string = '';
-  // let tooltipStyle: string = 'display: none;';
+  let tappedNodeDids = new Set<string>(); // 一度でもタップされたノードのDIDを保持
+  let currentSelectedNodeDid: string | null = null; // 現在選択されているノードのDIDを保持
 
   onMount(() => {
     cytoscape.use( fcose );
@@ -32,25 +29,18 @@
       wheelSensitivity: 0.1,
     });
 
-    // 相互フォロー関係にあるエッジにクラスを付与
-    cyInstance.edges().forEach(edge => {
-      const source = edge.source().id();
-      const target = edge.target().id();
-      const isMutual = edge.cy().edges(`[source = "${target}"][target = "${source}"]`).length > 0;
-      if (isMutual) {
-        edge.addClass('mutual');
-      }
-    });
-
-    // 初期中心ノードを選択状態にし、タップ済みセットに追加
+    // 初期中心ノードを選択状態にし、tappedNodeDidsとcurrentSelectedNodeDidを更新
     if (initialSelectedNodeDid) {
       tappedNodeDids.add(initialSelectedNodeDid);
+      currentSelectedNodeDid = initialSelectedNodeDid;
       const centerNode = cyInstance.nodes(`[id = "${initialSelectedNodeDid}"]`);
       if (centerNode.length > 0) {
         centerNode.select();
         centerNode.addClass('tapped');
       }
     }
+    // エッジのスタイルを初期設定
+    updateEdgeStyles(cyInstance, currentSelectedNodeDid);
 
     // 初期ロード時にレイアウトを適用
     cyInstance.layout(GraphLayout).run();
@@ -66,13 +56,21 @@
       cyInstance.nodes().unselect();
       node.select();
 
-      const isTapped = tappedNodeDids.has(nodeId);
-      if (!isTapped) {
+      const isTappedBefore = tappedNodeDids.has(nodeId); // 以前にタップされたことがあるか
+
+      // currentSelectedNodeDid を更新
+      currentSelectedNodeDid = nodeId;
+
+      // tappedNodeDids に追加 (一度タップされたノードは常に保持)
+      if (!isTappedBefore) {
         tappedNodeDids.add(nodeId);
-        node.addClass('tapped');
+        node.addClass('tapped'); // 半透明にする
       }
 
-      dispatch('nodeTap', { did: nodeId, isTapped });
+      // ノードがタップされたらエッジスタイルを再計算
+      updateEdgeStyles(cyInstance, currentSelectedNodeDid);
+
+      dispatch('nodeTap', { did: nodeId, isTapped: isTappedBefore }); // isTapped を復元
     });
 
     // マウスオーバーイベント
@@ -121,27 +119,8 @@
       }
     });
 
-    // 既存エッジのデータを更新し、相互フォロー関係のクラスを付与
-    cyInstance.edges().forEach(edge => {
-      const source = edge.source().id();
-      const target = edge.target().id();
-      const isMutual = edge.cy().edges(`[source = "${target}"][target = "${source}"]`).length > 0;
-      
-      // mutualクラスの有無を更新
-      if (isMutual && !edge.hasClass('mutual')) {
-        edge.addClass('mutual');
-      } else if (!isMutual && edge.hasClass('mutual')) {
-        edge.removeClass('mutual');
-      }
-
-      // エッジのデータ自体が変更された場合（例: 太さの変更など）を考慮
-      // GraphStylesでエッジのスタイルがデータに依存している場合、
-      // ここでedge.data()を更新することでスタイルが再適用される
-      const newEdgeData = graphData.edges.find(e => e.data.source === source && e.data.target === target)?.data;
-      if (newEdgeData && JSON.stringify(edge.data()) !== JSON.stringify(newEdgeData)) {
-        edge.data(newEdgeData);
-      }
-    });
+    // エッジのスタイルを更新
+    updateEdgeStyles(cyInstance, currentSelectedNodeDid);
 
     // ノードが追加された場合のみレイアウトを再適用
     if (nodesToAdd.length > 0) {
@@ -220,6 +199,33 @@
     });
 
     return [...nodes, ...edges, ...finalParentNodes];
+  }
+
+  // エッジのスタイルを更新する関数
+  function updateEdgeStyles(cy: cytoscape.Core, selectedNodeDid: string | null) {
+    cy.edges().removeClass('mutual tapped-mutual tapped-unilateral'); // 既存のクラスをすべて削除
+
+    cy.edges().forEach(edge => {
+      const sourceId = edge.source().id();
+      const targetId = edge.target().id();
+
+      const isMutual = cy.edges(`[source = "${targetId}"][target = "${sourceId}"]`).length > 0;
+      const isConnectedToSelectedNode = selectedNodeDid && (sourceId === selectedNodeDid || targetId === selectedNodeDid);
+
+      if (isConnectedToSelectedNode) {
+        if (isMutual) {
+          edge.addClass('tapped-mutual'); // タップノードから直接の紹介ノードかつ相互紹介：太い青線
+        } else {
+          edge.addClass('tapped-unilateral'); // タップノードから直接の紹介ノードかつ片方紹介：細い青線
+        }
+      } else {
+        if (isMutual) {
+          edge.addClass('mutual'); // タップノードとは無関係だが、相互紹介状態：太い黒線
+        }
+        // タップノードとは無関係だが、片方紹介状態：細い黒線 (デフォルトのエッジスタイルが適用される)
+        // その他：細い黒線 (デフォルトのエッジスタイルが適用される)
+      }
+    });
   }
 </script>
 

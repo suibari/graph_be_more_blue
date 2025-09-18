@@ -47,7 +47,7 @@ export default [
     style: {
       'curve-style': 'straight',
       'width': '1px',
-      'line-color': 'gray',
+      'line-color': 'gray', // デフォルトを黒に変更
     }
   },
   {
@@ -55,6 +55,20 @@ export default [
     style: {
       'width': '5px',
       'line-color': 'black',
+    }
+  },
+  {
+    selector: 'edge.tapped-mutual',
+    style: {
+      'width': '5px',
+      'line-color': 'blue',
+    }
+  },
+  {
+    selector: 'edge.tapped-unilateral',
+    style: {
+      'width': '1px',
+      'line-color': 'blue',
     }
   },
   {
