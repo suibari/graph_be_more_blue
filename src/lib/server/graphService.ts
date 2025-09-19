@@ -8,6 +8,10 @@ import type { PageServerLoadOutput } from '../../$types';
 let accessJwt: string | undefined;
 let refreshJwt: string | undefined;
 
+// キャッシュ関連の変数
+const CACHE_TTL = 5 * 60 * 1000; // 5分
+let graphDataCache: { [key: string]: { data: any; timestamp: number } } = {}; // より汎用的な型に変更
+
 export const agent = new AtpAgent({
   service: 'https://bsky.social',
 });
@@ -113,6 +117,29 @@ export async function fetchAllProfiles(
 }
 
 export async function getGraphData(centerNodeHandle: string): Promise<PageServerLoadOutput> {
+  await createOrRefreshSession();
+  const centerNodeProfile = await agent.resolveHandle({handle: centerNodeHandle});
+  const centerNodeDid = centerNodeProfile.data.did;
+
+  const now = Date.now();
+  const cachedData = graphDataCache[centerNodeDid]; // DIDをキーとして使用
+
+  if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
+    console.log(`[INFO] Cache hit for ${centerNodeHandle} (DID: ${centerNodeDid})`);
+    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 裏でキャッシュを更新
+    return cachedData.data;
+  }
+
+  console.log(`[INFO] Cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`);
+  if (cachedData) {
+    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 古いキャッシュを返しつつ、非同期で更新
+    return cachedData.data;
+  }
+
+  return await updateGraphDataCache(centerNodeHandle, centerNodeDid); // キャッシュが存在しない場合はフェッチして返す
+}
+
+async function fetchAndProcessGraphData(centerNodeHandle: string, centerNodeDid: string): Promise<PageServerLoadOutput> {
   try {
     console.log('Fetching data from Bluesky for handle:', centerNodeHandle);
 
@@ -127,10 +154,9 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
       };
     }
 
-    await createOrRefreshSession();
-
-    const centerNodeProfile = await agent.resolveHandle({handle: centerNodeHandle});
-    const centerNodeDid = centerNodeProfile.data.did;
+    // createOrRefreshSessionはgetGraphDataの冒頭で呼び出されるため、ここでは不要
+    // const centerNodeProfile = await agent.resolveHandle({handle: centerNodeHandle});
+    // const centerNodeDid = centerNodeProfile.data.did;
 
     const initialDids = new Set<string>();
     initialDids.add(centerNodeDid);
@@ -221,7 +247,7 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
       initialCenterDid: centerNodeDid,
     };
   } catch (error) {
-    console.error('Error in getGraphData function:', error);
+    console.error('Error in fetchAndProcessGraphData function:', error);
     return {
       graphData: {
         nodes: [],
@@ -230,4 +256,131 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
       initialCenterDid: '',
     };
   }
+}
+
+async function updateGraphDataCache(centerNodeHandle: string, centerNodeDid: string): Promise<PageServerLoadOutput> {
+  const data = await fetchAndProcessGraphData(centerNodeHandle, centerNodeDid);
+  graphDataCache[centerNodeDid] = { // DIDをキーとして使用
+    data,
+    timestamp: Date.now(),
+  };
+  return data;
+}
+
+// expandGraph用のキャッシュ関数
+export async function getExpandGraphData(didToExpand: string): Promise<any> {
+  const now = Date.now();
+  const cachedData = graphDataCache[didToExpand]; // 共通のキャッシュを使用
+
+  if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
+    console.log(`[INFO] Common cache hit for expandGraph ${didToExpand}`);
+    updateExpandGraphDataCache(didToExpand); // 裏でキャッシュを更新
+    return cachedData.data;
+  }
+
+  console.log(`[INFO] Common cache miss or expired for expandGraph ${didToExpand}. Fetching new data.`);
+  if (cachedData) {
+    updateExpandGraphDataCache(didToExpand); // 古いキャッシュを返しつつ、非同期で更新
+    return cachedData.data;
+  }
+
+  return await updateExpandGraphDataCache(didToExpand); // キャッシュが存在しない場合はフェッチして返す
+}
+
+async function fetchAndProcessExpandGraphData(didToExpand: string): Promise<any> { // 戻り値の型をanyに
+  if (!BSKY_DID || !BSKY_PASSWORD) {
+    console.error('Bluesky DID or password not set in environment variables.');
+    return {
+      graphData: {
+        nodes: [],
+        edges: [],
+      },
+      initialCenterDid: '', // PageServerLoadOutputとの互換性のため追加
+      error: 'Server configuration error'
+    };
+  }
+
+  await createOrRefreshSession();
+
+  const relatedRecords = await fetchAllRecords(
+    didToExpand,
+    'com.skybemoreblue.intro.introduction'
+  );
+  console.log('Fetched relatedRecords count:', relatedRecords.length);
+
+  const newDids = new Set<string>();
+  relatedRecords.forEach((record: any) => {
+    if (record.value?.subject) {
+      newDids.add(record.value.subject);
+    }
+  });
+  newDids.add(didToExpand);
+
+  const profiles = await fetchAllProfiles(Array.from(newDids));
+
+  const introRecordsMap = new Map<string, any>();
+  relatedRecords.forEach((record: any) => {
+    if (record.value?.subject) {
+      const authorDid = record.uri.split('/')[2];
+      introRecordsMap.set(record.value.subject, { ...record.value, author: authorDid });
+    }
+  });
+
+  const newNodes: any[] = [];
+  const newEdges: any[] = [];
+  const didToProfileMap = new Map<string, any>();
+
+  for (const profile of profiles) {
+    didToProfileMap.set(profile.did, profile);
+    const rank = getRank({
+      followersCount: profile.followersCount || 0,
+      followsCount: profile.followsCount || 1,
+    });
+
+    const introduction = introRecordsMap.get(profile.did);
+
+    newNodes.push({
+      data: {
+        id: profile.did,
+        img: profile.avatar ? await imageToBase64(profile.avatar) : null,
+        name: profile.displayName || profile.handle,
+        rank: rank,
+        handle: profile.handle,
+        introductions: introduction ? [introduction] : [],
+        tags: introduction ? introduction.tags : [],
+      },
+      group: 'nodes',
+    });
+  }
+
+  relatedRecords.forEach((record: any) => {
+    const sourceDid = record.uri.split('/')[2];
+    const targetDid = record.value?.subject;
+
+    if (targetDid && didToProfileMap.has(sourceDid) && didToProfileMap.has(targetDid)) {
+      newEdges.push({
+        data: {
+          source: sourceDid,
+          target: targetDid,
+        },
+        group: 'edges',
+      });
+    }
+  });
+
+  return {
+    graphData: {
+      nodes: newNodes,
+      edges: newEdges,
+    },
+  };
+}
+
+async function updateExpandGraphDataCache(didToExpand: string) {
+  const data = await fetchAndProcessExpandGraphData(didToExpand);
+  graphDataCache[didToExpand] = { // 共通のキャッシュを使用
+    data,
+    timestamp: Date.now(),
+  };
+  return data;
 }
