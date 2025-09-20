@@ -16,10 +16,10 @@
       <button class="close-button" on:click={closeModal}>&times;</button>
       <h2>GraphBeMoreBlue</h2>
       <p>GraphBeMoreBlueは<a href="https://www.skybemoreblue.com/" target="_blank">SkyBeMoreBlue</a>のネットワークグラフビューアです。</p>
-      <p>アバタータップで、選択アカウントが切り替わります。</p>
-      <p>グラフの末端のアバタータップで、ネットワークグラフを拡張できます。</p>
+      <p><b>アバタータップ</b>で、選択アカウントが切り替わります。</p>
+      <p><b>グラフの末端のアバタータップ</b>で、グラフがひろがります。</p>
       <p>アバター間の線は、太線が相互紹介をあらわします。</p>
-      <p>PC版の場合、マウスオーバーで、選択アカウントからの紹介文が見れます。</p>
+      <p>PC版の場合、マウスオーバーで紹介文が見れます。</p>
     </div>
   </div>
 {/if}

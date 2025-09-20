@@ -116,27 +116,72 @@ export async function fetchAllProfiles(
   return allProfiles;
 }
 
-export async function getGraphData(centerNodeHandle: string): Promise<PageServerLoadOutput> {
-  await createOrRefreshSession();
-  const centerNodeProfile = await agent.resolveHandle({handle: centerNodeHandle});
-  const centerNodeDid = centerNodeProfile.data.did;
+export async function getGraphData(
+  centerNodeHandle: string
+): Promise<PageServerLoadOutput & { error?: string; status?: number }> {
+  try {
+    await createOrRefreshSession();
+    const centerNodeProfile = await agent.resolveHandle({ handle: centerNodeHandle });
+    const centerNodeDid = centerNodeProfile.data.did;
 
-  const now = Date.now();
-  const cachedData = graphDataCache[centerNodeDid]; // DIDをキーとして使用
+    const now = Date.now();
+    const cachedData = graphDataCache[centerNodeDid]; // DIDをキーとして使用
 
-  if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
-    console.log(`[INFO] Cache hit for ${centerNodeHandle} (DID: ${centerNodeDid})`);
-    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 裏でキャッシュを更新 (awaitを削除)
-    return cachedData.data;
+    if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
+      console.log(`[INFO] Cache hit for ${centerNodeHandle} (DID: ${centerNodeDid})`);
+      updateGraphDataCache(centerNodeHandle, centerNodeDid).catch((err) => {
+        console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
+      }); // 裏でキャッシュを更新, エラーはログに出すだけ
+      return cachedData.data;
+    }
+
+    console.log(
+      `[INFO] Cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`
+    );
+    if (cachedData) {
+      updateGraphDataCache(centerNodeHandle, centerNodeDid).catch((err) => {
+        console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
+      }); // 古いキャッシュを返しつつ、非同期で更新
+      return cachedData.data;
+    }
+
+    return await updateGraphDataCache(centerNodeHandle, centerNodeDid); // キャッシュが存在しない場合はフェッチして返す
+  } catch (error) {
+    console.error(`Error in getGraphData for handle ${centerNodeHandle}:`, error);
+    const emptyResult = {
+      graphData: { nodes: [], edges: [] },
+      initialCenterDid: ''
+    };
+
+    if (
+      error &&
+      typeof error === 'object' &&
+      'status' in error &&
+      typeof error.status === 'number' &&
+      'message' in error &&
+      typeof error.message === 'string'
+    ) {
+      if (error.status === 400 && error.message.includes('Unable to resolve handle')) {
+        return {
+          ...emptyResult,
+          error: `Handle not found: ${centerNodeHandle}`,
+          status: 404
+        };
+      }
+      return {
+        ...emptyResult,
+        error: error.message,
+        status: error.status
+      };
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+    return {
+      ...emptyResult,
+      error: errorMessage,
+      status: 500
+    };
   }
-
-  console.log(`[INFO] Cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`);
-  if (cachedData) {
-    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 古いキャッシュを返しつつ、非同期で更新 (awaitを削除)
-    return cachedData.data;
-  }
-
-  return await updateGraphDataCache(centerNodeHandle, centerNodeDid); // キャッシュが存在しない場合はフェッチして返す
 }
 
 async function fetchAndProcessGraphData(centerNodeHandle: string, centerNodeDid: string): Promise<PageServerLoadOutput> {
@@ -248,17 +293,14 @@ async function fetchAndProcessGraphData(centerNodeHandle: string, centerNodeDid:
     };
   } catch (error) {
     console.error('Error in fetchAndProcessGraphData function:', error);
-    return {
-      graphData: {
-        nodes: [],
-        edges: [],
-      },
-      initialCenterDid: '',
-    };
+    throw error;
   }
 }
 
-async function updateGraphDataCache(centerNodeHandle: string, centerNodeDid: string): Promise<PageServerLoadOutput> {
+async function updateGraphDataCache(
+  centerNodeHandle: string,
+  centerNodeDid: string
+): Promise<PageServerLoadOutput> {
   const data = await fetchAndProcessGraphData(centerNodeHandle, centerNodeDid);
   graphDataCache[centerNodeDid] = { // DIDをキーとして使用
     data,

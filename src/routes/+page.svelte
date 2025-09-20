@@ -9,11 +9,19 @@
   export let data: PageData;
   let graphData = data.graphData;
 
+  onMount(() => {
+    if (data.error) {
+      showSnackbar(data.error, 'error');
+    }
+  });
+
   let initialCenterDid: string | null = data.initialCenterDid;
   let selectedNodeDid: string | null = data.initialCenterDid; // タップされたノード、初期値は中心ノード
   let hoveredNodeDid: string | null = null; // マウスオーバーされたノード
   let hoveredNodePosition: { x: number; y: number } | null = null; // マウスオーバーされたノードの描画位置
   let isLoading = !graphData; // 初期ロード状態を追加
+  let isHoveringTooltip = false;
+  let hideTooltipTimer: any;
 
   // 表示する紹介文とツールチップのスタイルをリアクティブに計算
   $: displayIntroduction = '';
@@ -34,7 +42,8 @@
         if (intro && intro.body) {
           // アカウントのnameを太字で表示
           const nodeName = targetNode.data.name || targetNode.data.handle;
-          displayIntroduction = `<strong>${nodeName}</strong>\n${intro.body}`;
+          const profileLink = `https://www.skybemoreblue.com/user/${targetNode.data.id}`;
+          displayIntroduction = `<strong><a href="${profileLink}" target="_blank" rel="noopener noreferrer">${nodeName}</a></strong>\n${intro.body}`;
           if (hoveredNodePosition && hoveredNodeDid) { // マウスオーバー時のみツールチップ位置を更新
             tooltipStyle = `
               display: block;
@@ -130,11 +139,27 @@
   }
 
   function handleNodeMouseover(event: CustomEvent<{ did: string; renderedPosition: { x: number; y: number } }>) {
+    clearTimeout(hideTooltipTimer);
     hoveredNodeDid = event.detail.did;
     hoveredNodePosition = event.detail.renderedPosition;
   }
 
   function handleNodeMouseout() {
+    hideTooltipTimer = setTimeout(() => {
+      if (!isHoveringTooltip) {
+        hoveredNodeDid = null;
+        hoveredNodePosition = null;
+      }
+    }, 100);
+  }
+
+  function handleTooltipEnter() {
+    isHoveringTooltip = true;
+    clearTimeout(hideTooltipTimer);
+  }
+
+  function handleTooltipLeave() {
+    isHoveringTooltip = false;
     hoveredNodeDid = null;
     hoveredNodePosition = null;
   }
@@ -147,7 +172,6 @@
     color: white;
     padding: 8px;
     border-radius: 4px;
-    pointer-events: none; /* ツールチップがマウスイベントをブロックしないようにする */
     z-index: 1000;
     max-width: 300px; /* ツールチップの最大幅 */
     white-space: pre-wrap; /* 改行を保持 */
@@ -163,7 +187,12 @@
     on:nodeMouseover={handleNodeMouseover}
     on:nodeMouseout={handleNodeMouseout}
   />
-  <div class="tooltip" style={tooltipStyle}>
+  <div
+    class="tooltip"
+    style={tooltipStyle}
+    on:mouseenter={handleTooltipEnter}
+    on:mouseleave={handleTooltipLeave}
+  >
     {@html displayIntroduction}
   </div>
 </div>

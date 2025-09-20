@@ -22,5 +22,10 @@ body {
   }
 }
 
+.tooltip a {
+  color: white;
+  text-decoration: underline;
+}
+
 /* Other styles from the original app.css if any */
 /* For now, assuming this is a new file or we are replacing existing styles */
