@@ -126,13 +126,13 @@ export async function getGraphData(centerNodeHandle: string): Promise<PageServer
 
   if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
     console.log(`[INFO] Cache hit for ${centerNodeHandle} (DID: ${centerNodeDid})`);
-    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 裏でキャッシュを更新
+    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 裏でキャッシュを更新 (awaitを削除)
     return cachedData.data;
   }
 
   console.log(`[INFO] Cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`);
   if (cachedData) {
-    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 古いキャッシュを返しつつ、非同期で更新
+    updateGraphDataCache(centerNodeHandle, centerNodeDid); // 古いキャッシュを返しつつ、非同期で更新 (awaitを削除)
     return cachedData.data;
   }
 
@@ -274,13 +274,13 @@ export async function getExpandGraphData(didToExpand: string): Promise<any> {
 
   if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
     console.log(`[INFO] Common cache hit for expandGraph ${didToExpand}`);
-    updateExpandGraphDataCache(didToExpand); // 裏でキャッシュを更新
+    updateExpandGraphDataCache(didToExpand); // 裏でキャッシュを更新 (awaitを削除)
     return cachedData.data;
   }
 
   console.log(`[INFO] Common cache miss or expired for expandGraph ${didToExpand}. Fetching new data.`);
   if (cachedData) {
-    updateExpandGraphDataCache(didToExpand); // 古いキャッシュを返しつつ、非同期で更新
+    updateExpandGraphDataCache(didToExpand); // 古いキャッシュを返しつつ、非同期で更新 (awaitを削除)
     return cachedData.data;
   }
 
