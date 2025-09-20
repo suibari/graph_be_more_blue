@@ -92,6 +92,21 @@
 
   $: if (cyInstance && graphData) {
     const processedElements = processGraphData(graphData);
+
+    // 新しい親ノードのIDセットを作成
+    const newParentNodeIds = new Set(
+      processedElements
+        .filter(el => el.group === 'nodes' && el.classes === 'parent')
+        .map(el => el.data.id)
+    );
+
+    // 既存の親ノードのうち、新しいデータに含まれないものを削除
+    cyInstance.nodes('.parent').forEach(parentCyNode => {
+      if (!newParentNodeIds.has(parentCyNode.id())) {
+        cyInstance?.remove(parentCyNode);
+      }
+    });
+
     // 既存の要素と新しい要素をマージ
     const currentElements = cyInstance.elements().jsons();
 
@@ -127,8 +142,8 @@
     // エッジのスタイルを更新
     updateEdgeStyles(cyInstance, currentSelectedNodeDid);
 
-    // ノードが追加された場合のみレイアウトを再適用
-    if (nodesToAdd.length > 0) {
+    // ノードが追加された場合、または親ノードが削除された場合にレイアウトを再適用
+    if (nodesToAdd.length > 0 || cyInstance.nodes('.parent').length !== newParentNodeIds.size) { // 親ノードの数が変わった場合もレイアウトを適用
       cyInstance.layout(GraphLayout).run();
     }
 

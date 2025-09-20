@@ -1,18 +1,17 @@
 export default [
   {
-    selector: 'node',
+    selector: 'node[img]', // imgデータを持つノードにのみ適用
     style: {
       'width': 'data(rank)' as any,
       'height': 'data(rank)' as any,
       'background-image': 'data(img)',
       'background-fit': 'contain',
-      // 'font-size': '18px',
-      // 'font-weight': 'bold' as any,
-      // 'content': `data(name)`,
-      // 'text-valign': 'center' as any,
-      // 'text-wrap': 'wrap' as any,
-      // 'text-max-width': '140px',
-      // 'background-color': 'gray',
+    }
+  },
+  {
+    selector: 'node:parent', // 親ノードのデフォルトスタイル
+    style: {
+      'background-color': 'gray', // 親ノードのデフォルト背景色
     }
   },
   {
