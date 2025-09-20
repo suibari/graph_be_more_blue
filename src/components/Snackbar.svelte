@@ -16,7 +16,7 @@
     class:snackbar-success={$snackbar.type === 'success'}
     class:snackbar-error={$snackbar.type === 'error'}
     class:snackbar-info={$snackbar.type === 'info'}
-    transition:fly={{ y: -50, duration: 300, easing: quintOut }}
+    transition:fly={{ y: 50, duration: 300, easing: quintOut }}
   >
     <p>{$snackbar.message}</p>
     {#if $snackbar.link}
@@ -31,7 +31,7 @@
 <style>
   .snackbar-container {
     position: fixed;
-    top: 20px;
+    bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
     padding: 10px 20px;
