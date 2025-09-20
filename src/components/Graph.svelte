@@ -164,58 +164,76 @@
     const tagCounts: Record<string, number> = {};
     nodes.forEach(node => {
       if (node.data.tags && node.data.tags.length > 0) {
-        console.log(`Node ${node.data.id} (${node.data.name}) has tags:`, node.data.tags);
-        node.data.tags.forEach((tag: string) => {
+            node.data.tags.forEach((tag: string) => {
           tagCounts[tag] = (tagCounts[tag] || 0) + 1;
         });
       }
     });
-    console.log('Tag Counts:', tagCounts);
 
     const validTags = new Set(
       Object.entries(tagCounts)
         .filter(([, count]) => count >= minMembersPerTag)
         .map(([tag]) => tag)
     );
-    console.log('Valid Tags (minMembersPerTag =', minMembersPerTag, '):', Array.from(validTags));
 
-    const parentCandidates: Record<string, string | undefined> = {};
+    // 各ノードに親を割り当てる
     nodes.forEach(node => {
-      if (node.data.tags) {
-        const foundTag = node.data.tags.find((tag: string) => validTags.has(tag));
-        if (foundTag) {
-          parentCandidates[node.data.id] = 'tag-' + foundTag;
+      if (node.data.tags && node.data.tags.length > 0) {
+        const candidateTags = node.data.tags.filter((tag: string) => validTags.has(tag));
+
+        if (candidateTags.length > 0) {
+          let selectedTag = candidateTags[0];
+          let maxCount = tagCounts[selectedTag];
+
+          for (let i = 1; i < candidateTags.length; i++) {
+            const currentTag = candidateTags[i];
+            const currentCount = tagCounts[currentTag];
+            if (currentCount > maxCount) {
+              maxCount = currentCount;
+              selectedTag = currentTag;
+            }
+          }
+
+          node.data.parent = 'tag-' + selectedTag;
+        } else {
+          delete node.data.parent;
         }
-      }
-    });
-
-    const actualParentTagCounts: Record<string, number> = {};
-    Object.values(parentCandidates).forEach(parentId => {
-      if (parentId) {
-        actualParentTagCounts[parentId] = (actualParentTagCounts[parentId] || 0) + 1;
-      }
-    });
-    console.log('Actual Parent Tag Counts:', actualParentTagCounts);
-
-    const finalParentNodes: { group: 'nodes', data: NodeDataDefinition, classes: string }[] = [];
-    Object.entries(actualParentTagCounts).forEach(([parentId, count]) => {
-      if (count >= minMembersPerTag) {
-        finalParentNodes.push({
-          group: 'nodes',
-          data: { id: parentId, name: parentId.replace('tag-', '') },
-          classes: 'parent'
-        });
-      }
-    });
-
-    nodes.forEach(node => {
-      const parentId = parentCandidates[node.data.id];
-      if (parentId && actualParentTagCounts[parentId] >= minMembersPerTag) {
-        node.data.parent = parentId;
       } else {
-        // 親ノードの条件を満たさない場合はparentを削除
         delete node.data.parent;
       }
+    });
+
+    // 実際に各親ノードに割り当てられた子ノードの数を再カウント
+    const finalAssignedParentCounts: Record<string, number> = {};
+    nodes.forEach(node => {
+      if (node.data.parent) {
+        finalAssignedParentCounts[node.data.parent] = (finalAssignedParentCounts[node.data.parent] || 0) + 1;
+      }
+    });
+
+    // 最終的に残す親ノードのIDセット
+    const finalValidParentIds = new Set<string>();
+    Object.entries(finalAssignedParentCounts).forEach(([parentId, count]) => {
+      if (count >= minMembersPerTag) {
+        finalValidParentIds.add(parentId);
+      }
+    });
+
+    // finalValidParentIds に含まれない親ノードに割り当てられた子ノードの parent プロパティを削除
+    nodes.forEach(node => {
+      if (node.data.parent && !finalValidParentIds.has(node.data.parent)) {
+        delete node.data.parent;
+      }
+    });
+
+    // 実際に子ノードが割り当てられ、かつ minMembersPerTag を満たす親ノードのみを生成
+    const finalParentNodes: { group: 'nodes', data: NodeDataDefinition, classes: string }[] = [];
+    finalValidParentIds.forEach(parentId => {
+      finalParentNodes.push({
+        group: 'nodes',
+        data: { id: parentId, name: parentId.replace('tag-', '') },
+        classes: 'parent'
+      });
     });
 
     return [...nodes, ...edges, ...finalParentNodes];
