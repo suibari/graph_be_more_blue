@@ -27,6 +27,7 @@
 	},
 	"dependencies": {
 		"@atproto/api": "^0.16.9",
+		"@supabase/supabase-js": "^2.57.4",
 		"cytoscape": "^3.33.1",
 		"cytoscape-fcose": "^2.2.0"
 	}

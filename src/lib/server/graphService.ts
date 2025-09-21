@@ -3,15 +3,15 @@ import { imageToBase64 } from '$lib/server/util';
 import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
 import { getPds } from '$lib/server/getPds';
 import { Buffer } from 'buffer';
-import type { PageServerLoadOutput } from '../../$types';
+import type { GraphData } from '$lib/types';
+import { createTable, getGraphData as getGraphDataFromDb, saveGraphData as saveGraphDataToDb } from './db';
 
 let accessJwt: string | undefined;
 let refreshJwt: string | undefined;
 
-// キャッシュ関連の変数
+// キャッシュ関連の定数
 const CACHE_TTL = 60 * 60 * 1000; // 1時間
 const BACKGROUND_REFRESH_INTERVAL = 5 * 60 * 1000; // バックグラウンド更新は5分ごと
-let graphDataCache: { [key: string]: { data: any; timestamp: number } } = {};
 let backgroundRefreshPromises: { [key: string]: Promise<any> | undefined } = {}; // バックグラウンド更新中のPromiseを保持
 
 export const agent = new AtpAgent({
@@ -120,39 +120,20 @@ export async function fetchAllProfiles(
 
 export async function getGraphData(
   centerNodeHandle: string
-): Promise<PageServerLoadOutput & { error?: string; status?: number }> {
+): Promise<{ graphData: GraphData; initialCenterDid: string; error?: string; status?: number }> {
   try {
+    await createTable(); // テーブルが存在しない場合は作成
     await createOrRefreshSession();
     const centerNodeProfile = await agent.resolveHandle({ handle: centerNodeHandle });
     const centerNodeDid = centerNodeProfile.data.did;
 
     const now = Date.now();
-    const cachedData = graphDataCache[centerNodeDid]; // DIDをキーとして使用
+    const dbData = await getGraphDataFromDb(centerNodeDid);
 
-    if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
-      console.log(`[INFO] Cache hit for ${centerNodeHandle} (DID: ${centerNodeDid})`);
-      // キャッシュが有効期限内であれば、バックグラウンド更新は行わない
-      // ただし、BACKGROUND_REFRESH_INTERVALを過ぎていればバックグラウンドで更新を試みる
-      if (now > cachedData.timestamp + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[centerNodeDid]) {
+    if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL) {
+      console.log(`[INFO] DB cache hit for ${centerNodeHandle} (DID: ${centerNodeDid})`);
+      if (now > dbData.timestamp.getTime() + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[centerNodeDid]) {
         console.log(`[INFO] Initiating background refresh for ${centerNodeHandle}.`);
-        backgroundRefreshPromises[centerNodeDid] = updateGraphDataCache(centerNodeHandle, centerNodeDid)
-          .catch((err) => {
-            console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
-          })
-          .finally(() => {
-            backgroundRefreshPromises[centerNodeDid] = undefined; // 完了したらPromiseをクリア
-          });
-      }
-      return cachedData.data;
-    }
-
-    console.log(
-      `[INFO] Cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`
-    );
-    if (cachedData && now < cachedData.timestamp + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
-      // キャッシュは期限切れだが、バックグラウンド更新期間内であれば古いキャッシュを返しつつ、非同期で更新
-      if (!backgroundRefreshPromises[centerNodeDid]) {
-        console.log(`[INFO] Cache expired but within refresh interval for ${centerNodeHandle}. Returning stale data and initiating background refresh.`);
         backgroundRefreshPromises[centerNodeDid] = updateGraphDataCache(centerNodeHandle, centerNodeDid)
           .catch((err) => {
             console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
@@ -161,10 +142,31 @@ export async function getGraphData(
             backgroundRefreshPromises[centerNodeDid] = undefined;
           });
       }
-      return cachedData.data;
+      // 画像URLをBase64に変換して返す
+      return await convertImageUrlsToBase64(dbData.data);
     }
 
-    return await updateGraphDataCache(centerNodeHandle, centerNodeDid); // キャッシュが存在しない場合はフェッチして返す
+    console.log(
+      `[INFO] DB cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`
+    );
+    if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+      if (!backgroundRefreshPromises[centerNodeDid]) {
+        console.log(`[INFO] DB cache expired but within refresh interval for ${centerNodeHandle}. Returning stale data and initiating background refresh.`);
+        backgroundRefreshPromises[centerNodeDid] = updateGraphDataCache(centerNodeHandle, centerNodeDid)
+          .catch((err) => {
+            console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
+          })
+          .finally(() => {
+            backgroundRefreshPromises[centerNodeDid] = undefined;
+          });
+      }
+      // 画像URLをBase64に変換して返す
+      return await convertImageUrlsToBase64(dbData.data);
+    }
+
+    const newData = await updateGraphDataCache(centerNodeHandle, centerNodeDid);
+    // 画像URLをBase64に変換して返す
+    return await convertImageUrlsToBase64(newData);
   } catch (error) {
     console.error(`Error in getGraphData for handle ${centerNodeHandle}:`, error);
     const emptyResult = {
@@ -203,7 +205,29 @@ export async function getGraphData(
   }
 }
 
-async function fetchAndProcessGraphData(centerNodeHandle: string, centerNodeDid: string): Promise<PageServerLoadOutput> {
+async function convertImageUrlsToBase64(data: { graphData: GraphData; initialCenterDid: string }): Promise<{ graphData: GraphData; initialCenterDid: string }> {
+  const nodes = await Promise.all(data.graphData.nodes.map(async (node) => {
+    if (node.data.img) {
+      try {
+        node.data.img = await imageToBase64(node.data.img);
+      } catch (error) {
+        console.error(`Failed to convert image to base64 for node ${node.data.id}:`, error);
+        node.data.img = null; // エラーが発生した場合はnullを設定
+      }
+    }
+    return node;
+  }));
+
+  return {
+    ...data,
+    graphData: {
+      ...data.graphData,
+      nodes,
+    },
+  };
+}
+
+async function fetchAndProcessGraphData(centerNodeHandle: string, centerNodeDid: string): Promise<{ graphData: GraphData; initialCenterDid: string }> {
   try {
     console.log('Fetching data from Bluesky for handle:', centerNodeHandle);
 
@@ -280,7 +304,7 @@ async function fetchAndProcessGraphData(centerNodeHandle: string, centerNodeDid:
       nodes.push({
         data: {
           id: profile.did,
-          img: profile.avatar ? await imageToBase64(profile.avatar) : null,
+          img: profile.avatar || null,
           name: profile.displayName || profile.handle,
           rank: rank,
           handle: profile.handle,
@@ -319,13 +343,10 @@ async function fetchAndProcessGraphData(centerNodeHandle: string, centerNodeDid:
 async function updateGraphDataCache(
   centerNodeHandle: string,
   centerNodeDid: string
-): Promise<PageServerLoadOutput> {
+): Promise<{ graphData: GraphData; initialCenterDid: string }> {
   try {
     const data = await fetchAndProcessGraphData(centerNodeHandle, centerNodeDid);
-    graphDataCache[centerNodeDid] = { // DIDをキーとして使用
-      data,
-      timestamp: Date.now(),
-    };
+    await saveGraphDataToDb(centerNodeDid, data);
     return data;
   } catch (error) {
     console.error(`[CACHE_UPDATE_ERROR] Failed to fetch and update cache for ${centerNodeHandle}:`, error);
@@ -336,14 +357,16 @@ async function updateGraphDataCache(
 
 // expandGraph用のキャッシュ関数
 export async function getExpandGraphData(didToExpand: string): Promise<any> {
+  await createTable();
   const now = Date.now();
-  const cachedData = graphDataCache[didToExpand]; // 共通のキャッシュを使用
+  const dbData = await getGraphDataFromDb(didToExpand);
 
-  if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
-    console.log(`[INFO] Common cache hit for expandGraph ${didToExpand}`);
-    if (now > cachedData.timestamp + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[didToExpand]) {
+  if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL) {
+    console.log(`[INFO] DB cache hit for expandGraph ${didToExpand}`);
+    if (now > dbData.timestamp.getTime() + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[didToExpand]) {
       console.log(`[INFO] Initiating background refresh for expandGraph ${didToExpand}.`);
-      backgroundRefreshPromises[didToExpand] = updateExpandGraphDataCache(didToExpand)
+      const profile = await agent.getProfile({ actor: didToExpand });
+      backgroundRefreshPromises[didToExpand] = updateGraphDataCache(profile.data.handle, didToExpand)
         .catch((err) => {
           console.error(`[BACKGROUND] Failed to update expandGraph cache for ${didToExpand}:`, err);
         })
@@ -351,14 +374,15 @@ export async function getExpandGraphData(didToExpand: string): Promise<any> {
           backgroundRefreshPromises[didToExpand] = undefined;
         });
     }
-    return cachedData.data;
+    return await convertImageUrlsToBase64(dbData.data);
   }
 
-  console.log(`[INFO] Common cache miss or expired for expandGraph ${didToExpand}. Fetching new data.`);
-  if (cachedData && now < cachedData.timestamp + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+  console.log(`[INFO] DB cache miss or expired for expandGraph ${didToExpand}. Fetching new data.`);
+  if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
     if (!backgroundRefreshPromises[didToExpand]) {
       console.log(`[INFO] Cache expired but within refresh interval for expandGraph ${didToExpand}. Returning stale data and initiating background refresh.`);
-      backgroundRefreshPromises[didToExpand] = updateExpandGraphDataCache(didToExpand)
+      const profile = await agent.getProfile({ actor: didToExpand });
+      backgroundRefreshPromises[didToExpand] = updateGraphDataCache(profile.data.handle, didToExpand)
         .catch((err) => {
           console.error(`[BACKGROUND] Failed to update expandGraph cache for ${didToExpand}:`, err);
         })
@@ -366,10 +390,12 @@ export async function getExpandGraphData(didToExpand: string): Promise<any> {
           backgroundRefreshPromises[didToExpand] = undefined;
         });
     }
-    return cachedData.data;
+    return await convertImageUrlsToBase64(dbData.data);
   }
 
-  return await updateExpandGraphDataCache(didToExpand); // キャッシュが存在しない場合はフェッチして返す
+  const profile = await agent.getProfile({ actor: didToExpand });
+  const newData = await updateGraphDataCache(profile.data.handle, didToExpand);
+  return await convertImageUrlsToBase64(newData);
 }
 
 async function fetchAndProcessExpandGraphData(didToExpand: string): Promise<any> { // 戻り値の型をanyに
@@ -427,7 +453,7 @@ async function fetchAndProcessExpandGraphData(didToExpand: string): Promise<any>
     newNodes.push({
       data: {
         id: profile.did,
-        img: profile.avatar ? await imageToBase64(profile.avatar) : null,
+        img: profile.avatar || null,
         name: profile.displayName || profile.handle,
         rank: rank,
         handle: profile.handle,
@@ -461,32 +487,30 @@ async function fetchAndProcessExpandGraphData(didToExpand: string): Promise<any>
   };
 }
 
-async function updateExpandGraphDataCache(didToExpand: string) {
+async function updateExpandGraphDataCache(didToExpand: string): Promise<any> {
   try {
-    const data = await fetchAndProcessExpandGraphData(didToExpand);
-    graphDataCache[didToExpand] = { // 共通のキャッシュを使用
-      data,
-      timestamp: Date.now(),
-    };
+    const profile = await agent.getProfile({ actor: didToExpand });
+    const data = await fetchAndProcessGraphData(profile.data.handle, didToExpand);
+    await saveGraphDataToDb(didToExpand, data);
     return data;
   } catch (error) {
     console.error(`[CACHE_UPDATE_ERROR] Failed to fetch and update expandGraph cache for ${didToExpand}:`, error);
-    // エラーが発生した場合はキャッシュを更新しない
-    throw error; // エラーを再スローして呼び出し元に伝える
+    throw error;
   }
 }
 
-export async function getRecentIntroductionsGraphData(): Promise<PageServerLoadOutput & { error?: string; status?: number }> {
+export async function getRecentIntroductionsGraphData(): Promise<{ graphData: GraphData; initialCenterDid: string; error?: string; status?: number }> {
   try {
+    await createTable();
     await createOrRefreshSession();
 
     const now = Date.now();
     const cacheKey = 'recentIntroductions';
-    const cachedData = graphDataCache[cacheKey];
+    const dbData = await getGraphDataFromDb(cacheKey);
 
-    if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
-      console.log(`[INFO] Cache hit for recent introductions.`);
-      if (now > cachedData.timestamp + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[cacheKey]) {
+    if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL) {
+      console.log(`[INFO] DB cache hit for recent introductions.`);
+      if (now > dbData.timestamp.getTime() + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[cacheKey]) {
         console.log(`[INFO] Initiating background refresh for recent introductions.`);
         backgroundRefreshPromises[cacheKey] = updateRecentIntroductionsGraphDataCache()
           .catch((err) => {
@@ -496,11 +520,11 @@ export async function getRecentIntroductionsGraphData(): Promise<PageServerLoadO
             backgroundRefreshPromises[cacheKey] = undefined;
           });
       }
-      return cachedData.data;
+      return await convertImageUrlsToBase64(dbData.data);
     }
 
-    console.log(`[INFO] Cache miss or expired for recent introductions. Fetching new data.`);
-    if (cachedData && now < cachedData.timestamp + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+    console.log(`[INFO] DB cache miss or expired for recent introductions. Fetching new data.`);
+    if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
       if (!backgroundRefreshPromises[cacheKey]) {
         console.log(`[INFO] Cache expired but within refresh interval for recent introductions. Returning stale data and initiating background refresh.`);
         backgroundRefreshPromises[cacheKey] = updateRecentIntroductionsGraphDataCache()
@@ -511,10 +535,11 @@ export async function getRecentIntroductionsGraphData(): Promise<PageServerLoadO
             backgroundRefreshPromises[cacheKey] = undefined;
           });
       }
-      return cachedData.data;
+      return await convertImageUrlsToBase64(dbData.data);
     }
 
-    return await updateRecentIntroductionsGraphDataCache();
+    const newData = await updateRecentIntroductionsGraphDataCache();
+    return await convertImageUrlsToBase64(newData);
   } catch (error) {
     console.error(`Error in getRecentIntroductionsGraphData:`, error);
     const emptyResult = {
@@ -531,7 +556,7 @@ export async function getRecentIntroductionsGraphData(): Promise<PageServerLoadO
   }
 }
 
-async function fetchAndProcessRecentIntroductionsGraphData(): Promise<PageServerLoadOutput> {
+async function fetchAndProcessRecentIntroductionsGraphData(): Promise<{ graphData: GraphData; initialCenterDid: string }> {
   try {
     console.log('Fetching recent introductions from API.');
     const response = await fetch('https://www.skybemoreblue.com/api/recent-introductions?limit=100&offset=0');
@@ -572,7 +597,7 @@ async function fetchAndProcessRecentIntroductionsGraphData(): Promise<PageServer
       nodes.push({
         data: {
           id: profile.did,
-          img: profile.avatar ? await imageToBase64(profile.avatar) : null,
+          img: profile.avatar || null,
           name: profile.displayName || profile.handle,
           rank: rank,
           handle: profile.handle,
@@ -612,13 +637,10 @@ async function fetchAndProcessRecentIntroductionsGraphData(): Promise<PageServer
   }
 }
 
-async function updateRecentIntroductionsGraphDataCache(): Promise<PageServerLoadOutput> {
+async function updateRecentIntroductionsGraphDataCache(): Promise<{ graphData: GraphData; initialCenterDid: string }> {
   try {
     const data = await fetchAndProcessRecentIntroductionsGraphData();
-    graphDataCache['recentIntroductions'] = {
-      data,
-      timestamp: Date.now(),
-    };
+    await saveGraphDataToDb('recentIntroductions', data);
     return data;
   } catch (error) {
     console.error(`[CACHE_UPDATE_ERROR] Failed to fetch and update cache for recent introductions:`, error);
