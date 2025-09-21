@@ -26,7 +26,7 @@
       container: container,
       elements: processedElements,
       style: GraphStyles,
-      wheelSensitivity: 0.1,
+      wheelSensitivity: 0.5,
     });
 
     // 初期中心ノードを選択状態にし、tappedNodeDidsとcurrentSelectedNodeDidを更新
@@ -75,7 +75,7 @@
       // ノードがタップされたらエッジスタイルを再計算
       updateEdgeStyles(cyInstance, currentSelectedNodeDid);
 
-      dispatch('nodeTap', { did: nodeId, isTapped: isTappedBefore }); // isTapped を復元
+      dispatch('nodeTap', { did: nodeId, isTapped: isTappedBefore, renderedPosition: node.renderedPosition() }); // isTapped と renderedPosition を復元
     });
 
     // マウスオーバーイベント

@@ -15,8 +15,8 @@
     }
   });
 
-  let initialCenterDid: string | null = data.initialCenterDid;
-  let selectedNodeDid: string | null = data.initialCenterDid; // タップされたノード、初期値は中心ノード
+  let initialCenterDid: string | null = null; // TOPページでは中心ノードは特定しない
+  let selectedNodeDid: string | null = null; // タップされたノード、初期値は中心ノード
   let hoveredNodeDid: string | null = null; // マウスオーバーされたノード
   let hoveredNodePosition: { x: number; y: number } | null = null; // マウスオーバーされたノードの描画位置
   let isLoading = !graphData; // 初期ロード状態を追加
@@ -36,22 +36,34 @@
     if (graphData && targetNodeDid) {
       const targetNode = graphData.nodes.find(node => node.data.id === targetNodeDid);
       if (targetNode && targetNode.data.introductions) {
-        const authorDidToCheck = selectedNodeDid || initialCenterDid;
-        const intro = targetNode.data.introductions.find(intro => intro.author === authorDidToCheck);
+        // TOPページでは中心ノードの概念がないため、targetNodeDidがsubjectとなっている紹介文を探す
+        const intro = targetNode.data.introductions.find(intro => intro.subject === targetNodeDid);
 
         if (intro && intro.body) {
           // アカウントのnameを太字で表示
           const nodeName = targetNode.data.name || targetNode.data.handle;
           const profileLink = `https://www.skybemoreblue.com/user/${targetNode.data.id}`;
-          displayIntroduction = `<strong><a href="${profileLink}" target="_blank" rel="noopener noreferrer">${nodeName}</a></strong>\n${intro.body}`;
-          if (hoveredNodePosition && hoveredNodeDid) { // マウスオーバー時のみツールチップ位置を更新
+          
+          // 紹介者の名前を取得
+          const authorNode = graphData.nodes.find(node => node.data.id === intro.authorDid); // intro.author を使用
+          const authorName = authorNode ? (authorNode.data.name || authorNode.data.handle) : '不明なユーザー';
+          
+          displayIntroduction = `<strong><a href="${profileLink}" target="_blank" rel="noopener noreferrer">${nodeName}</a></strong>\n${intro.body}\n\n紹介者: ${authorName}`;
+          
+          // マウスオーバー時またはタップ時にツールチップ位置を更新
+          if (hoveredNodePosition && hoveredNodeDid) {
             tooltipStyle = `
               display: block;
               left: ${hoveredNodePosition.x + 15}px;
               top: ${hoveredNodePosition.y + 15}px;
             `;
-          } else if (selectedNodeDid && !hoveredNodeDid) {
-            // ノードタップ時でマウスオーバーがない場合、ツールチップは非表示のまま、紹介文のみ更新
+          } else if (selectedNodeDid && selectedNodePosition) { // タップされたノードの位置を使用
+            tooltipStyle = `
+              display: block;
+              left: ${selectedNodePosition.x + 15}px;
+              top: ${selectedNodePosition.y + 15}px;
+            `;
+          } else {
             tooltipStyle = 'display: none;';
           }
         }
@@ -59,11 +71,14 @@
     }
   }
 
-  async function handleNodeTap(event: CustomEvent<{ did: string; isTapped: boolean }>) {
-    const { did, isTapped } = event.detail;
+  let selectedNodePosition: { x: number; y: number } | null = null; // タップされたノードの描画位置
+
+  async function handleNodeTap(event: CustomEvent<{ did: string; isTapped: boolean; renderedPosition: { x: number; y: number } }>) {
+    const { did, isTapped, renderedPosition } = event.detail;
     console.log('Node tapped:', did, 'Is already tapped:', isTapped);
 
     selectedNodeDid = did; // タップされたノードを更新
+    selectedNodePosition = renderedPosition; // タップされたノードの描画位置を更新
     hoveredNodeDid = null; // タップしたらマウスオーバー状態をリセット
     hoveredNodePosition = null;
 

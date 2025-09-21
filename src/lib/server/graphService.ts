@@ -475,3 +475,153 @@ async function updateExpandGraphDataCache(didToExpand: string) {
     throw error; // エラーを再スローして呼び出し元に伝える
   }
 }
+
+export async function getRecentIntroductionsGraphData(): Promise<PageServerLoadOutput & { error?: string; status?: number }> {
+  try {
+    await createOrRefreshSession();
+
+    const now = Date.now();
+    const cacheKey = 'recentIntroductions';
+    const cachedData = graphDataCache[cacheKey];
+
+    if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
+      console.log(`[INFO] Cache hit for recent introductions.`);
+      if (now > cachedData.timestamp + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[cacheKey]) {
+        console.log(`[INFO] Initiating background refresh for recent introductions.`);
+        backgroundRefreshPromises[cacheKey] = updateRecentIntroductionsGraphDataCache()
+          .catch((err) => {
+            console.error(`[BACKGROUND] Failed to update cache for recent introductions:`, err);
+          })
+          .finally(() => {
+            backgroundRefreshPromises[cacheKey] = undefined;
+          });
+      }
+      return cachedData.data;
+    }
+
+    console.log(`[INFO] Cache miss or expired for recent introductions. Fetching new data.`);
+    if (cachedData && now < cachedData.timestamp + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+      if (!backgroundRefreshPromises[cacheKey]) {
+        console.log(`[INFO] Cache expired but within refresh interval for recent introductions. Returning stale data and initiating background refresh.`);
+        backgroundRefreshPromises[cacheKey] = updateRecentIntroductionsGraphDataCache()
+          .catch((err) => {
+            console.error(`[BACKGROUND] Failed to update cache for recent introductions:`, err);
+          })
+          .finally(() => {
+            backgroundRefreshPromises[cacheKey] = undefined;
+          });
+      }
+      return cachedData.data;
+    }
+
+    return await updateRecentIntroductionsGraphDataCache();
+  } catch (error) {
+    console.error(`Error in getRecentIntroductionsGraphData:`, error);
+    const emptyResult = {
+      graphData: { nodes: [], edges: [] },
+      initialCenterDid: ''
+    };
+
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+    return {
+      ...emptyResult,
+      error: errorMessage,
+      status: 500
+    };
+  }
+}
+
+async function fetchAndProcessRecentIntroductionsGraphData(): Promise<PageServerLoadOutput> {
+  try {
+    console.log('Fetching recent introductions from API.');
+    const response = await fetch('https://www.skybemoreblue.com/api/recent-introductions?limit=100&offset=0');
+    if (!response.ok) {
+      throw new Error(`API fetch failed with status: ${response.status}`);
+    }
+    const introductions = await response.json();
+
+    const dids = new Set<string>();
+    introductions.forEach((intro: any) => {
+      dids.add(intro.subject);
+      dids.add(intro.authorDid);
+    });
+
+    const profiles = await fetchAllProfiles(Array.from(dids));
+    const didToProfileMap = new Map<string, any>();
+    profiles.forEach(profile => didToProfileMap.set(profile.did, profile));
+
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    const processedEdges = new Set<string>(); // 重複エッジを避けるためのセット
+
+    for (const profile of profiles) {
+      const rank = getRank({
+        followersCount: profile.followersCount || 0,
+        followsCount: profile.followsCount || 1,
+      });
+
+      // このノードに関連する紹介文をすべて収集
+      const nodeIntroductions = introductions.filter((intro: any) => intro.subject === profile.did || intro.authorDid === profile.did);
+      const allTags = new Set<string>();
+      nodeIntroductions.forEach((intro: any) => {
+        if (intro.tags) {
+          intro.tags.forEach((tag: string) => allTags.add(tag));
+        }
+      });
+
+      nodes.push({
+        data: {
+          id: profile.did,
+          img: profile.avatar ? await imageToBase64(profile.avatar) : null,
+          name: profile.displayName || profile.handle,
+          rank: rank,
+          handle: profile.handle,
+          introductions: nodeIntroductions, // そのノードに関連する紹介文をすべて含める
+          tags: Array.from(allTags),
+        },
+        group: 'nodes',
+      });
+    }
+
+    introductions.forEach((intro: any) => {
+      if (didToProfileMap.has(intro.authorDid) && didToProfileMap.has(intro.subject)) {
+        const edgeId = `${intro.authorDid}-${intro.subject}`;
+        if (!processedEdges.has(edgeId)) {
+          edges.push({
+            data: {
+              source: intro.authorDid,
+              target: intro.subject,
+            },
+            group: 'edges',
+          });
+          processedEdges.add(edgeId);
+        }
+      }
+    });
+
+    return {
+      graphData: {
+        nodes,
+        edges,
+      },
+      initialCenterDid: '', // TOPページでは中心ノードは特定しない
+    };
+  } catch (error) {
+    console.error('Error in fetchAndProcessRecentIntroductionsGraphData function:', error);
+    throw error;
+  }
+}
+
+async function updateRecentIntroductionsGraphDataCache(): Promise<PageServerLoadOutput> {
+  try {
+    const data = await fetchAndProcessRecentIntroductionsGraphData();
+    graphDataCache['recentIntroductions'] = {
+      data,
+      timestamp: Date.now(),
+    };
+    return data;
+  } catch (error) {
+    console.error(`[CACHE_UPDATE_ERROR] Failed to fetch and update cache for recent introductions:`, error);
+    throw error;
+  }
+}

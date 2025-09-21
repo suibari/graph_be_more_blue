@@ -5,9 +5,10 @@ export type Introduction = {
   tags: string[];
   $type: string;
   subject: string;
+  authorDid: string; // authorDid を追加
   createdAt: string;
   updatedAt: string;
-  author: string;
+  author: string; // 既存の author も残しておく
 };
 
 export type GraphNode = {
