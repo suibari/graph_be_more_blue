@@ -274,6 +274,7 @@
   }
 </script>
 
+<!-- svelte-ignore css_unused_selector -->
 <style>
   .graph {
     width: 100%;

@@ -1,4 +1,3 @@
-
 export type Introduction = {
   body: string;
   lang: string;
