@@ -1,6 +1,5 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import Snackbar from '$components/Snackbar.svelte';
 	import InfoModal from '$components/InfoModal.svelte';
 	
@@ -13,7 +12,6 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
 </svelte:head>
 
 <div class="layout-container">
