@@ -9,8 +9,10 @@ let accessJwt: string | undefined;
 let refreshJwt: string | undefined;
 
 // キャッシュ関連の変数
-const CACHE_TTL = 5 * 60 * 1000; // 5分
-let graphDataCache: { [key: string]: { data: any; timestamp: number } } = {}; // より汎用的な型に変更
+const CACHE_TTL = 60 * 60 * 1000; // 1時間
+const BACKGROUND_REFRESH_INTERVAL = 5 * 60 * 1000; // バックグラウンド更新は5分ごと
+let graphDataCache: { [key: string]: { data: any; timestamp: number } } = {};
+let backgroundRefreshPromises: { [key: string]: Promise<any> | undefined } = {}; // バックグラウンド更新中のPromiseを保持
 
 export const agent = new AtpAgent({
   service: 'https://bsky.social',
@@ -129,19 +131,36 @@ export async function getGraphData(
 
     if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
       console.log(`[INFO] Cache hit for ${centerNodeHandle} (DID: ${centerNodeDid})`);
-      updateGraphDataCache(centerNodeHandle, centerNodeDid).catch((err) => {
-        console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
-      }); // 裏でキャッシュを更新, エラーはログに出すだけ
+      // キャッシュが有効期限内であれば、バックグラウンド更新は行わない
+      // ただし、BACKGROUND_REFRESH_INTERVALを過ぎていればバックグラウンドで更新を試みる
+      if (now > cachedData.timestamp + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[centerNodeDid]) {
+        console.log(`[INFO] Initiating background refresh for ${centerNodeHandle}.`);
+        backgroundRefreshPromises[centerNodeDid] = updateGraphDataCache(centerNodeHandle, centerNodeDid)
+          .catch((err) => {
+            console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
+          })
+          .finally(() => {
+            backgroundRefreshPromises[centerNodeDid] = undefined; // 完了したらPromiseをクリア
+          });
+      }
       return cachedData.data;
     }
 
     console.log(
       `[INFO] Cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`
     );
-    if (cachedData) {
-      updateGraphDataCache(centerNodeHandle, centerNodeDid).catch((err) => {
-        console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
-      }); // 古いキャッシュを返しつつ、非同期で更新
+    if (cachedData && now < cachedData.timestamp + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+      // キャッシュは期限切れだが、バックグラウンド更新期間内であれば古いキャッシュを返しつつ、非同期で更新
+      if (!backgroundRefreshPromises[centerNodeDid]) {
+        console.log(`[INFO] Cache expired but within refresh interval for ${centerNodeHandle}. Returning stale data and initiating background refresh.`);
+        backgroundRefreshPromises[centerNodeDid] = updateGraphDataCache(centerNodeHandle, centerNodeDid)
+          .catch((err) => {
+            console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
+          })
+          .finally(() => {
+            backgroundRefreshPromises[centerNodeDid] = undefined;
+          });
+      }
       return cachedData.data;
     }
 
@@ -301,12 +320,18 @@ async function updateGraphDataCache(
   centerNodeHandle: string,
   centerNodeDid: string
 ): Promise<PageServerLoadOutput> {
-  const data = await fetchAndProcessGraphData(centerNodeHandle, centerNodeDid);
-  graphDataCache[centerNodeDid] = { // DIDをキーとして使用
-    data,
-    timestamp: Date.now(),
-  };
-  return data;
+  try {
+    const data = await fetchAndProcessGraphData(centerNodeHandle, centerNodeDid);
+    graphDataCache[centerNodeDid] = { // DIDをキーとして使用
+      data,
+      timestamp: Date.now(),
+    };
+    return data;
+  } catch (error) {
+    console.error(`[CACHE_UPDATE_ERROR] Failed to fetch and update cache for ${centerNodeHandle}:`, error);
+    // エラーが発生した場合はキャッシュを更新しない
+    throw error; // エラーを再スローして呼び出し元に伝える
+  }
 }
 
 // expandGraph用のキャッシュ関数
@@ -316,13 +341,31 @@ export async function getExpandGraphData(didToExpand: string): Promise<any> {
 
   if (cachedData && now < cachedData.timestamp + CACHE_TTL) {
     console.log(`[INFO] Common cache hit for expandGraph ${didToExpand}`);
-    updateExpandGraphDataCache(didToExpand); // 裏でキャッシュを更新 (awaitを削除)
+    if (now > cachedData.timestamp + BACKGROUND_REFRESH_INTERVAL && !backgroundRefreshPromises[didToExpand]) {
+      console.log(`[INFO] Initiating background refresh for expandGraph ${didToExpand}.`);
+      backgroundRefreshPromises[didToExpand] = updateExpandGraphDataCache(didToExpand)
+        .catch((err) => {
+          console.error(`[BACKGROUND] Failed to update expandGraph cache for ${didToExpand}:`, err);
+        })
+        .finally(() => {
+          backgroundRefreshPromises[didToExpand] = undefined;
+        });
+    }
     return cachedData.data;
   }
 
   console.log(`[INFO] Common cache miss or expired for expandGraph ${didToExpand}. Fetching new data.`);
-  if (cachedData) {
-    updateExpandGraphDataCache(didToExpand); // 古いキャッシュを返しつつ、非同期で更新 (awaitを削除)
+  if (cachedData && now < cachedData.timestamp + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+    if (!backgroundRefreshPromises[didToExpand]) {
+      console.log(`[INFO] Cache expired but within refresh interval for expandGraph ${didToExpand}. Returning stale data and initiating background refresh.`);
+      backgroundRefreshPromises[didToExpand] = updateExpandGraphDataCache(didToExpand)
+        .catch((err) => {
+          console.error(`[BACKGROUND] Failed to update expandGraph cache for ${didToExpand}:`, err);
+        })
+        .finally(() => {
+          backgroundRefreshPromises[didToExpand] = undefined;
+        });
+    }
     return cachedData.data;
   }
 
@@ -419,10 +462,16 @@ async function fetchAndProcessExpandGraphData(didToExpand: string): Promise<any>
 }
 
 async function updateExpandGraphDataCache(didToExpand: string) {
-  const data = await fetchAndProcessExpandGraphData(didToExpand);
-  graphDataCache[didToExpand] = { // 共通のキャッシュを使用
-    data,
-    timestamp: Date.now(),
-  };
-  return data;
+  try {
+    const data = await fetchAndProcessExpandGraphData(didToExpand);
+    graphDataCache[didToExpand] = { // 共通のキャッシュを使用
+      data,
+      timestamp: Date.now(),
+    };
+    return data;
+  } catch (error) {
+    console.error(`[CACHE_UPDATE_ERROR] Failed to fetch and update expandGraph cache for ${didToExpand}:`, error);
+    // エラーが発生した場合はキャッシュを更新しない
+    throw error; // エラーを再スローして呼び出し元に伝える
+  }
 }
