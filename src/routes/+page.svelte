@@ -22,6 +22,7 @@
   let hoveredNodeDid: string | null = null; // マウスオーバーされたノード
   let hoveredNodePosition: { x: number; y: number } | null = null; // マウスオーバーされたノードの描画位置
   let isLoading = !graphData; // 初期ロード状態を追加
+  let hideTooltipTimer: ReturnType<typeof setTimeout>;
 
   async function handleNodeTap(event: CustomEvent<{ did: string; isTapped: boolean; renderedPosition: { x: number; y: number } }>) {
     const { did, isTapped } = event.detail; // renderedPosition は Tooltip コンポーネントに渡すため、ここでは不要
@@ -101,11 +102,23 @@
   }
 
   function handleNodeMouseover(event: CustomEvent<{ did: string; renderedPosition: { x: number; y: number } }>) {
+    clearTimeout(hideTooltipTimer);
     hoveredNodeDid = event.detail.did;
     hoveredNodePosition = event.detail.renderedPosition;
   }
 
   function handleNodeMouseout() {
+    hideTooltipTimer = setTimeout(() => {
+      hoveredNodeDid = null;
+      hoveredNodePosition = null;
+    }, 100);
+  }
+
+  function handleTooltipEnter() {
+    clearTimeout(hideTooltipTimer);
+  }
+
+  function handleTooltipLeave() {
     hoveredNodeDid = null;
     hoveredNodePosition = null;
   }
@@ -126,5 +139,7 @@
     {hoveredNodeDid}
     {hoveredNodePosition}
     {initialCenterDid}
+    on:mouseenter={handleTooltipEnter}
+    on:mouseleave={handleTooltipLeave}
   />
 </div>

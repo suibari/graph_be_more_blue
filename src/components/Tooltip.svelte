@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { GraphData, GraphNode, Introduction } from '$lib/types';
-  import { onDestroy } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
 
   export let graphData: GraphData | null;
   export let selectedNodeDid: string | null = null;
@@ -10,21 +10,7 @@
 
   let displayIntroduction = '';
   let tooltipStyle = 'display: none;';
-  let isHoveringTooltip = false;
-  let hideTooltipTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function handleTooltipEnter() {
-    isHoveringTooltip = true;
-    clearTimeout(hideTooltipTimer);
-  }
-
-  function handleTooltipLeave() {
-    isHoveringTooltip = false;
-    hideTooltipTimer = setTimeout(() => {
-      hoveredNodeDid = null;
-      hoveredNodePosition = null;
-    }, 100);
-  }
+  const dispatch = createEventDispatcher();
 
   $: {
     displayIntroduction = '';
@@ -76,9 +62,6 @@
     }
   }
 
-  onDestroy(() => {
-    clearTimeout(hideTooltipTimer);
-  });
 </script>
 
 <style>
@@ -98,8 +81,8 @@
 <div
   class="tooltip"
   style={tooltipStyle}
-  on:mouseenter={handleTooltipEnter}
-  on:mouseleave={handleTooltipLeave}
+  on:mouseenter={() => dispatch('mouseenter')}
+  on:mouseleave={() => dispatch('mouseleave')}
 >
   {@html displayIntroduction}
 </div>
