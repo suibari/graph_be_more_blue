@@ -26,7 +26,13 @@
           const authorDidToCheck = selectedNodeDid || initialCenterDid;
           intro = targetNode.data.introductions.find((i: Introduction) => i.author === authorDidToCheck);
         } else { // TOPページの場合
-          intro = targetNode.data.introductions.find((i: Introduction) => i.subject === targetNodeDid);
+          // createdAtで降順にソートして最新の紹介を取得
+          const sortedIntroductions = [...targetNode.data.introductions].sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA;
+          });
+          intro = sortedIntroductions.find((i: Introduction) => i.subject === targetNodeDid);
         }
 
         if (intro && intro.body) {
@@ -34,15 +40,15 @@
           const profileLink = `https://www.skybemoreblue.com/user/${targetNode.data.id}`;
           
           let authorName = '不明なユーザー';
-          if (intro.authorDid) { // authorDidが存在する場合のみ検索
-            const authorNode = graphData.nodes.find((node: GraphNode) => node.data.id === intro.authorDid);
+          const authorDid = initialCenterDid ? (selectedNodeDid || initialCenterDid) : intro.authorDid;
+
+          if (authorDid) { // authorDidが存在する場合のみ検索
+            const authorNode = graphData.nodes.find((node: GraphNode) => node.data.id === authorDid);
             authorName = authorNode ? (authorNode.data.name || authorNode.data.handle) : '不明なユーザー';
           }
           
           displayIntroduction = `<strong><a href="${profileLink}" target="_blank" rel="noopener noreferrer">${nodeName}</a></strong>\n${intro.body}`;
-          if (!initialCenterDid) { // TOPページの場合のみ紹介者を表示
-            displayIntroduction += `\n\n紹介者: ${authorName}`;
-          }
+          displayIntroduction += `\n\n紹介者: ${authorName}`;
           
           if (hoveredNodePosition && hoveredNodeDid) {
             tooltipStyle = `
