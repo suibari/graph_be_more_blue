@@ -73,7 +73,7 @@ export async function expandGraph(
     edgesUpdated = true;
   }
 
-  if (nodesToAdd.length === 0 && edgesToAdd.length === 0 && !introductionsUpdated && !edgesUpdated) {
+  if (newGraphData.graphData.nodes.length === 1 && edgesToAdd.length === 0 && !introductionsUpdated && !edgesUpdated) {
     const tappedNode = currentGraphData.nodes.find((node: GraphNode) => node.data.id === did);
     const nodeName = tappedNode?.data.name || tappedNode?.data.handle || 'このユーザー';
     return { updatedGraphData: null, snackbar: { message: `${nodeName}さんはまだ誰も紹介していないみたい`, type: 'info' } };
