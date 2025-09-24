@@ -1,6 +1,6 @@
 import type { ServerLoad } from '@sveltejs/kit';
 import { getGraphData } from '$lib/server/graphService';
-import type { PageServerLoadOutput } from '../../../$types';
+import type { PageServerLoadOutput } from '$lib/types';
 
 export const load: ServerLoad = async ({
   params

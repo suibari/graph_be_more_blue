@@ -149,9 +149,11 @@ export async function getGraphData(
     console.log(
       `[INFO] DB cache miss or expired for ${centerNodeHandle} (DID: ${centerNodeDid}). Fetching new data.`
     );
-    if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+
+    // dbDataが存在する場合、期限切れでも一旦それを返し、バックグラウンドで更新
+    if (dbData) {
       if (!backgroundRefreshPromises[centerNodeDid]) {
-        console.log(`[INFO] DB cache expired but within refresh interval for ${centerNodeHandle}. Returning stale data and initiating background refresh.`);
+        console.log(`[INFO] DB cache expired for ${centerNodeHandle}. Returning stale data and initiating background refresh.`);
         backgroundRefreshPromises[centerNodeDid] = updateGraphDataCache(centerNodeHandle, centerNodeDid)
           .catch((err) => {
             console.error(`[BACKGROUND] Failed to update cache for ${centerNodeHandle}:`, err);
@@ -160,10 +162,10 @@ export async function getGraphData(
             backgroundRefreshPromises[centerNodeDid] = undefined;
           });
       }
-      // 画像URLをBase64に変換して返す
       return await convertImageUrlsToBase64(dbData.data);
     }
 
+    // dbDataが存在しない（初回アクセスなど）場合、新しいデータをフェッチして返す
     const newData = await updateGraphDataCache(centerNodeHandle, centerNodeDid);
     // 画像URLをBase64に変換して返す
     return await convertImageUrlsToBase64(newData);
@@ -378,9 +380,11 @@ export async function getExpandGraphData(didToExpand: string): Promise<any> {
   }
 
   console.log(`[INFO] DB cache miss or expired for expandGraph ${didToExpand}. Fetching new data.`);
-  if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+
+  // dbDataが存在する場合、期限切れでも一旦それを返し、バックグラウンドで更新
+  if (dbData) {
     if (!backgroundRefreshPromises[didToExpand]) {
-      console.log(`[INFO] Cache expired but within refresh interval for expandGraph ${didToExpand}. Returning stale data and initiating background refresh.`);
+      console.log(`[INFO] DB cache expired for expandGraph ${didToExpand}. Returning stale data and initiating background refresh.`);
       const profile = await agent.getProfile({ actor: didToExpand });
       backgroundRefreshPromises[didToExpand] = updateGraphDataCache(profile.data.handle, didToExpand)
         .catch((err) => {
@@ -393,6 +397,7 @@ export async function getExpandGraphData(didToExpand: string): Promise<any> {
     return await convertImageUrlsToBase64(dbData.data);
   }
 
+  // dbDataが存在しない（初回アクセスなど）場合、新しいデータをフェッチして返す
   const profile = await agent.getProfile({ actor: didToExpand });
   const newData = await updateGraphDataCache(profile.data.handle, didToExpand);
   return await convertImageUrlsToBase64(newData);
@@ -524,9 +529,11 @@ export async function getRecentIntroductionsGraphData(): Promise<{ graphData: Gr
     }
 
     console.log(`[INFO] DB cache miss or expired for recent introductions. Fetching new data.`);
-    if (dbData && now < dbData.timestamp.getTime() + CACHE_TTL + BACKGROUND_REFRESH_INTERVAL) {
+
+    // dbDataが存在する場合、期限切れでも一旦それを返し、バックグラウンドで更新
+    if (dbData) {
       if (!backgroundRefreshPromises[cacheKey]) {
-        console.log(`[INFO] Cache expired but within refresh interval for recent introductions. Returning stale data and initiating background refresh.`);
+        console.log(`[INFO] DB cache expired for recent introductions. Returning stale data and initiating background refresh.`);
         backgroundRefreshPromises[cacheKey] = updateRecentIntroductionsGraphDataCache()
           .catch((err) => {
             console.error(`[BACKGROUND] Failed to update cache for recent introductions:`, err);
@@ -538,6 +545,7 @@ export async function getRecentIntroductionsGraphData(): Promise<{ graphData: Gr
       return await convertImageUrlsToBase64(dbData.data);
     }
 
+    // dbDataが存在しない（初回アクセスなど）場合、新しいデータをフェッチして返す
     const newData = await updateRecentIntroductionsGraphDataCache();
     return await convertImageUrlsToBase64(newData);
   } catch (error) {
@@ -585,8 +593,8 @@ async function fetchAndProcessRecentIntroductionsGraphData(): Promise<{ graphDat
         followsCount: profile.followsCount || 1,
       });
 
-      // このノードに関連する紹介文をすべて収集
-      const nodeIntroductions = introductions.filter((intro: any) => intro.subject === profile.did || intro.authorDid === profile.did);
+      // このノードに関連する紹介文をすべて収集 (そのノードのユーザーが「どのようなタグで紹介されているか」のみを対象)
+      const nodeIntroductions = introductions.filter((intro: any) => intro.subject === profile.did);
       const allTags = new Set<string>();
       nodeIntroductions.forEach((intro: any) => {
         if (intro.tags) {
