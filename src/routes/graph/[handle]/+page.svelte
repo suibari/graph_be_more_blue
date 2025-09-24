@@ -30,9 +30,15 @@
           { href: 'https://www.skybemoreblue.com/', text: 'skybemoreblue.com' }
         );
       }
+
+      // Promiseが解決されたら、実際のグラフデータを設定
+      graphData = resolvedGraphData || { nodes: [], edges: [] };
+      initialCenterDid = centerDid;
+      selectedNodeDid = centerDid; // 初期選択ノードも設定
     });
   });
 
+  // selectedNodeDid は onMount で設定されるため、ここでは初期値を null に戻す
   let selectedNodeDid: string | null = null;
   let hoveredNodeDid: string | null = null;
   let hoveredNodePosition: { x: number; y: number } | null = null;
@@ -106,13 +112,9 @@
     />
   {:then [resolvedGraphData, resolvedInitialCenterDid]}
     <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
-    <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
-    {graphData = resolvedGraphData || { nodes: [], edges: [] }}
-    {initialCenterDid = resolvedInitialCenterDid}
-    {selectedNodeDid = resolvedInitialCenterDid} <!-- 初期選択ノードも設定 -->
     <Graph
-      graphData={graphData}
-      initialSelectedNodeDid={initialCenterDid}
+      graphData={resolvedGraphData || { nodes: [], edges: [] }}
+      initialSelectedNodeDid={resolvedInitialCenterDid}
       {isLoading}
       on:nodeTap={handleNodeTap}
       on:nodeMouseover={handleNodeMouseover}

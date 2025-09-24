@@ -22,6 +22,11 @@
         showSnackbar(err, 'error');
       }
     });
+
+    // Promiseが解決されたら、実際のグラフデータを設定
+    data.graphDataPromise?.then(resolvedGraphData => {
+      graphData = resolvedGraphData || { nodes: [], edges: [] };
+    });
   });
 
   let initialCenterDid: string | null = null;
@@ -98,9 +103,8 @@
     />
   {:then resolvedGraphData}
     <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
-    {graphData = resolvedGraphData || { nodes: [], edges: [] }}
     <Graph
-      graphData={graphData}
+      graphData={resolvedGraphData || { nodes: [], edges: [] }}
       initialSelectedNodeDid={initialCenterDid}
       {isLoading}
       on:nodeTap={handleNodeTap}
