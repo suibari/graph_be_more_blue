@@ -106,8 +106,12 @@
     />
   {:then [resolvedGraphData, resolvedInitialCenterDid]}
     <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
+    <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
+    {graphData = resolvedGraphData || { nodes: [], edges: [] }}
+    {initialCenterDid = resolvedInitialCenterDid}
+    {selectedNodeDid = resolvedInitialCenterDid} <!-- 初期選択ノードも設定 -->
     <Graph
-      graphData={resolvedGraphData}
+      graphData={graphData}
       initialSelectedNodeDid={initialCenterDid}
       {isLoading}
       on:nodeTap={handleNodeTap}

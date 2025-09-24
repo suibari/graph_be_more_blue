@@ -98,7 +98,7 @@
     />
   {:then resolvedGraphData}
     <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
-    {@const _ = (graphData = resolvedGraphData)}
+    {graphData = resolvedGraphData || { nodes: [], edges: [] }}
     <Graph
       graphData={graphData}
       initialSelectedNodeDid={initialCenterDid}
