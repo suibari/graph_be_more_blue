@@ -1,10 +1,11 @@
 import { json } from '@sveltejs/kit';
+import type { RequestEvent } from '@sveltejs/kit'; // RequestEvent をインポート
 import { BSKY_DID, BSKY_PASSWORD } from '$env/static/private';
 import { getPds } from '$lib/server/getPds';
 import { imageToBase64 } from '$lib/server/util';
-import { agent, createOrRefreshSession, getRank, fetchAllRecords, fetchAllProfiles, getExpandGraphData } from '$lib/server/graphService'; // getExpandGraphDataをインポート
+import { agent, createOrRefreshSession, getRank, fetchAllRecords, fetchAllProfiles, getExpandGraphData } from '$lib/server/graphService';
 
-export async function POST({ request }) {
+export async function POST({ request }: RequestEvent) { // request に型を追加
   console.log('Expanding graph via API endpoint...');
   const { did: didToExpand } = await request.json();
 

@@ -9,20 +9,26 @@
   import type { GraphData, GraphNode } from '$lib/types'; // GraphNode型をインポート
   import { expandGraph } from '$lib/graphUtils';
 
-  export let data: PageData;
-  let graphData = data.graphData;
+  export let data: PageData; // data.graphDataPromise, data.errorPromise, data.statusPromise を含む
+
+  let graphData: GraphData | null = null; // Promise解決後に設定される実際のグラフデータ
+  let error: string | undefined = undefined;
+  let status: number | undefined = undefined;
 
   onMount(() => {
-    if (data.error) {
-      showSnackbar(data.error, 'error');
-    }
+    // errorPromise の解決を待ってスナックバーを表示
+    data.errorPromise?.then(err => {
+      if (err) {
+        showSnackbar(err, 'error');
+      }
+    });
   });
 
-  let initialCenterDid: string | null = null; // TOPページでは中心ノードは特定しない
-  let selectedNodeDid: string | null = null; // タップされたノード、初期値は中心ノード
-  let hoveredNodeDid: string | null = null; // マウスオーバーされたノード
-  let hoveredNodePosition: { x: number; y: number } | null = null; // マウスオーバーされたノードの描画位置
-  let isLoading = !graphData; // 初期ロード状態を追加
+  let initialCenterDid: string | null = null;
+  let selectedNodeDid: string | null = null;
+  let hoveredNodeDid: string | null = null;
+  let hoveredNodePosition: { x: number; y: number } | null = null;
+  let isLoading: boolean = false; // handleNodeTap でのみ使用
   let hideTooltipTimer: ReturnType<typeof setTimeout>;
 
   async function handleNodeTap(event: CustomEvent<{ did: string; isTapped: boolean }>) {
@@ -43,9 +49,9 @@
       return;
     }
 
-    isLoading = true;
+    isLoading = true; // ここでローディングを開始
     const result = await expandGraph(did, graphData);
-    isLoading = false;
+    isLoading = false; // ここでローディングを終了
 
     if (result.updatedGraphData) {
       graphData = result.updatedGraphData;
@@ -80,21 +86,37 @@
 </script>
 
 <div class="container mx-auto p-4">
-  <Graph
-    {graphData}
-    initialSelectedNodeDid={initialCenterDid}
-    {isLoading}
-    on:nodeTap={handleNodeTap}
-    on:nodeMouseover={handleNodeMouseover}
-    on:nodeMouseout={handleNodeMouseout}
-  />
-  <Tooltip
-    {graphData}
-    {selectedNodeDid}
-    {hoveredNodeDid}
-    {hoveredNodePosition}
-    {initialCenterDid}
-    on:mouseenter={handleTooltipEnter}
-    on:mouseleave={handleTooltipLeave}
-  />
+  {#await data.graphDataPromise}
+    <!-- Promiseが解決されるまでローディングサークルを表示 -->
+    <Graph
+      graphData={{ nodes: [], edges: [] }}
+      initialSelectedNodeDid={initialCenterDid}
+      isLoading={true}
+      on:nodeTap={handleNodeTap}
+      on:nodeMouseover={handleNodeMouseover}
+      on:nodeMouseout={handleNodeMouseout}
+    />
+  {:then resolvedGraphData}
+    <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
+    {@const _ = (graphData = resolvedGraphData)}
+    <Graph
+      graphData={graphData}
+      initialSelectedNodeDid={initialCenterDid}
+      {isLoading}
+      on:nodeTap={handleNodeTap}
+      on:nodeMouseover={handleNodeMouseover}
+      on:nodeMouseout={handleNodeMouseout}
+    />
+    <Tooltip
+      {graphData}
+      {selectedNodeDid}
+      {hoveredNodeDid}
+      {hoveredNodePosition}
+      {initialCenterDid}
+      on:mouseenter={handleTooltipEnter}
+      on:mouseleave={handleTooltipLeave}
+    />
+  {:catch err}
+    <p>エラーが発生しました: {err.message}</p>
+  {/await}
 </div>

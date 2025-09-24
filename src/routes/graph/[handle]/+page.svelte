@@ -1,36 +1,42 @@
 <script lang="ts">
-  import Graph from '../../../components/Graph.svelte'; // パスを修正
-  import Tooltip from '../../../components/Tooltip.svelte'; // Tooltipコンポーネントをインポート
+  import Graph from '../../../components/Graph.svelte';
+  import Tooltip from '../../../components/Tooltip.svelte';
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { onMount } from 'svelte';
   import { showSnackbar } from '$lib/stores/snackbar';
-  import type { GraphData, GraphEdge, GraphNode } from '$lib/types'; // GraphNode型をインポート
+  import type { GraphData, GraphEdge, GraphNode } from '$lib/types';
   import { expandGraph } from '$lib/graphUtils';
 
-  export let data: PageData;
-  let graphData = data.graphData;
+  export let data: PageData; // data.graphDataPromise, data.initialCenterDidPromise, data.errorPromise, data.statusPromise, data.noIntroductionDataPromise を含む
+
+  let graphData: GraphData | null = null;
+  let initialCenterDid: string | null = null;
+  let error: string | undefined = undefined;
+  let status: number | undefined = undefined;
+  let noIntroductionData: boolean | undefined = undefined;
 
   onMount(() => {
-    if (data.error) {
-      showSnackbar(data.error, 'error');
-    } else if (data.noIntroductionData) {
-      const centerNode = graphData.nodes.find((node: GraphNode) => node.data.id === initialCenterDid);
-      const nodeName = centerNode?.data.name || centerNode?.data.handle || 'このユーザー';
-      showSnackbar(
-        `${nodeName}さんはまだ誰も紹介していないみたい。Let's go SkyBeMoreBlue !!`,
-        'info',
-        { href: 'https://www.skybemoreblue.com/', text: 'skybemoreblue.com' }
-      );
-    }
+    Promise.all([data.errorPromise, data.noIntroductionDataPromise, data.initialCenterDidPromise, data.graphDataPromise]).then(([err, noIntro, centerDid, resolvedGraphData]) => {
+      if (err) {
+        showSnackbar(err, 'error');
+      } else if (noIntro) {
+        const centerNode = resolvedGraphData?.nodes.find((node: GraphNode) => node.data.id === centerDid);
+        const nodeName = centerNode?.data.name || centerNode?.data.handle || 'このユーザー';
+        showSnackbar(
+          `${nodeName}さんはまだ誰も紹介していないみたい。Let's go SkyBeMoreBlue !!`,
+          'info',
+          { href: 'https://www.skybemoreblue.com/', text: 'skybemoreblue.com' }
+        );
+      }
+    });
   });
 
-  let initialCenterDid: string | null = data.initialCenterDid;
-  let selectedNodeDid: string | null = data.initialCenterDid; // タップされたノード、初期値は中心ノード
-  let hoveredNodeDid: string | null = null; // マウスオーバーされたノード
-  let hoveredNodePosition: { x: number; y: number } | null = null; // マウスオーバーされたノードの描画位置
-  let isLoading = !graphData; // 初期ロード状態を追加
+  let selectedNodeDid: string | null = null;
+  let hoveredNodeDid: string | null = null;
+  let hoveredNodePosition: { x: number; y: number } | null = null;
+  let isLoading: boolean = false; // handleNodeTap でのみ使用
   let hideTooltipTimer: ReturnType<typeof setTimeout>;
 
   async function handleNodeTap(event: CustomEvent<{ did: string; isTapped: boolean }>) {
@@ -88,21 +94,36 @@
 </script>
 
 <div class="container mx-auto p-4">
-  <Graph
-    {graphData}
-    initialSelectedNodeDid={initialCenterDid}
-    {isLoading}
-    on:nodeTap={handleNodeTap}
-    on:nodeMouseover={handleNodeMouseover}
-    on:nodeMouseout={handleNodeMouseout}
-  />
-  <Tooltip
-    {graphData}
-    {selectedNodeDid}
-    {hoveredNodeDid}
-    {hoveredNodePosition}
-    {initialCenterDid}
-    on:mouseenter={handleTooltipEnter}
-    on:mouseleave={handleTooltipLeave}
-  />
+  {#await Promise.all([data.graphDataPromise, data.initialCenterDidPromise])}
+    <!-- Promiseが解決されるまでローディングサークルを表示 -->
+    <Graph
+      graphData={{ nodes: [], edges: [] }}
+      initialSelectedNodeDid={null}
+      isLoading={true}
+      on:nodeTap={handleNodeTap}
+      on:nodeMouseover={handleNodeMouseover}
+      on:nodeMouseout={handleNodeMouseout}
+    />
+  {:then [resolvedGraphData, resolvedInitialCenterDid]}
+    <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
+    <Graph
+      graphData={resolvedGraphData}
+      initialSelectedNodeDid={initialCenterDid}
+      {isLoading}
+      on:nodeTap={handleNodeTap}
+      on:nodeMouseover={handleNodeMouseover}
+      on:nodeMouseout={handleNodeMouseout}
+    />
+    <Tooltip
+      {graphData}
+      {selectedNodeDid}
+      {hoveredNodeDid}
+      {hoveredNodePosition}
+      {initialCenterDid}
+      on:mouseenter={handleTooltipEnter}
+      on:mouseleave={handleTooltipLeave}
+    />
+  {:catch err}
+    <p>エラーが発生しました: {err.message}</p>
+  {/await}
 </div>
