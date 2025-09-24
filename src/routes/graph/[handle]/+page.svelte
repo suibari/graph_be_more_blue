@@ -113,8 +113,8 @@
   {:then [resolvedGraphData, resolvedInitialCenterDid]}
     <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
     <Graph
-      graphData={resolvedGraphData || { nodes: [], edges: [] }}
-      initialSelectedNodeDid={resolvedInitialCenterDid}
+      graphData={graphData || { nodes: [], edges: [] }}
+      initialSelectedNodeDid={initialCenterDid}
       {isLoading}
       on:nodeTap={handleNodeTap}
       on:nodeMouseover={handleNodeMouseover}

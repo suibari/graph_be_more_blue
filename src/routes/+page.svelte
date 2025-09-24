@@ -104,7 +104,7 @@
   {:then resolvedGraphData}
     <!-- Promiseが解決されたら、実際のグラフデータを設定し、Graphコンポーネントをレンダリング -->
     <Graph
-      graphData={resolvedGraphData || { nodes: [], edges: [] }}
+      graphData={graphData || { nodes: [], edges: [] }}
       initialSelectedNodeDid={initialCenterDid}
       {isLoading}
       on:nodeTap={handleNodeTap}
