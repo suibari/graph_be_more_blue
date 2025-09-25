@@ -116,7 +116,7 @@
       {selectedNodeDid}
       {hoveredNodeDid}
       {hoveredNodePosition}
-      {initialCenterDid}
+      initialCenterDid={selectedNodeDid}
       on:mouseenter={handleTooltipEnter}
       on:mouseleave={handleTooltipLeave}
     />
